@@ -75,6 +75,17 @@ jobs:
             ./scripts/feeds install -d y -p istore luci-app-store
           fi
 
+      - name: Deduplicate OpenClash package source
+        if: inputs.profile != 'baseline'
+        run: |
+          set -euo pipefail
+          # The luci feed already ships an older luci-app-openclash. Keep the
+          # upstream clone prepared by scripts/custom_prepare.sh and drop the
+          # feed copy so the package name is defined exactly once.
+          rm -rf openwrt/feeds/luci/applications/luci-app-openclash
+          rm -rf openwrt/package/feeds/luci/luci-app-openclash
+          test -s openwrt/package/luci-app-openclash/Makefile
+
       - name: Record package feed revisions
         run: |
           set -euo pipefail
