@@ -1,12 +1,12 @@
 # Development progress — evidence log
 
 Date: 2026-11-13
-Agent: DSH (not yet run against this package)
+Agent: DSH (baseline CI verified 2026-11-13)
 
 ## What is known
 - Existing Star-Song-derived V3 overlay was delivered with static script checks in an earlier step.
 - Current physical router is running the original author's 21.02 image on `cmcc,rax3000m-emmc`, p4 kernel 32MiB / p5 rootfs 2GiB.
-- No actual GitHub Actions build of this new overlay, router flash test, or hardware test is claimed here.
+- Baseline GitHub Actions build succeeded (run 43290704198, see evidence below); no router flash or hardware test is claimed.
 
 ## Session log (agent should append real results)
 | Time | Branch / Commit | Action | Evidence / URL | Result | Next step |
@@ -18,18 +18,20 @@ Agent: DSH (not yet run against this package)
 | 2026-11-13 03:31 | `feat/fix-baseline-package-sets` `4f09722` | Baseline CI rerun #2 | https://github.com/zhamaojun/Actions-rax3000z-emmc/actions/runs/43290704198 | Config stage PASS; download PASS; compile in progress | Wait for images |
 | 2026-11-13 03:50 | `feat/ci-size-gate-and-feed-evidence` | Added p4/p5 size gate (kernel 32 MiB, rootfs 2 GiB) to `verify_images.py`; workflow now records per-feed commit SHAs and uploads `feeds-shas.txt` / OpenClash SHA | doctor PASS; 9 unit tests OK | Size gate ready for artifact audit | Apply gate to baseline artifact when run completes |
 | 2026-11-13 03:58 | `feat/ci-size-gate-and-feed-evidence` | Found duplicate OpenClash risk: luci feed ships 0.45.141-beta while `custom_prepare.sh` clones upstream 0.48.002 into `package/`. Workflow now removes the feed copy for performance/full so the package name is defined once | — | Prepared for performance profile | Validate during performance build |
+| 2026-11-13 04:35 | main `531337c` | Baseline run #2 succeeded; artifact `xr30-baseline-2` downloaded and audited with the new size gate | https://github.com/zhamaojun/Actions-rax3000z-emmc/actions/runs/43290704198 | PASS: kernel 3,612,842 B ≤ 32 MiB, root 57,720,832 B ≤ 2 GiB; sysupgrade SHA256 `a77ecd98…`; manifest 427 packages | Dispatch performance |
 
-## Build evidence (agent should fill after CI)
-- Source SHA: `ab766cbcb0cc22a64e8bf816443bf3e1a56614bd` (first baseline attempt; pins the version the router currently runs)
-- Package feeds SHAs: pending first successful build
+## Build evidence — baseline (verified)
+- Source SHA: `ab766cbcb0cc22a64e8bf816443bf3e1a56614bd`
+- Package feeds SHAs (from `feeds.buildinfo`): `packages e09f3c7d1`, `luci 5829eabba5`, `routing a9e4310`, `telephony 920fbc5` (full 40-char SHAs were not captured by this run; the workflow now records them)
 - OpenClash SHA: n/a for baseline
 - iStore SHA: n/a for baseline
 - Profile: baseline
-- CI URL: https://github.com/zhamaojun/Actions-rax3000z-emmc/actions/runs/43289150610 (failed run #1)
-- First failed step / exact root cause: `Generate profile config` → `make defconfig` re-enabled base/author leftovers (see session log)
-- Image SHA256:
-- Kernel extracted bytes:
-- Root extracted bytes:
-- Supported devices metadata:
-- Package manifest:
+- CI URL: https://github.com/zhamaojun/Actions-rax3000z-emmc/actions/runs/43290704198 (success)
+- First failed step / exact root cause (run #1): `Generate profile config` → `make defconfig` re-enabled base/author leftovers (fixed in `4f09722`)
+- Image SHA256: `a77ecd983ae6071f7d36b8653e831fa5dc23e74ecea9410b34ba7a84e1a9138b` (sysupgrade)
+- Kernel extracted bytes: `3,612,842`
+- Root extracted bytes: `57,720,832`
+- Supported devices metadata: target `cmcc_rax3000m-emmc`, model `CMCC RAX3000M eMMC version`, device `cmcc,rax3000m-emmc`
+- Package manifest: `immortalwrt-mediatek-mt7981-baseline.manifest` (427 packages, in artifact)
+- Version: `r0-ab766cb`
 - Router flash: **NOT authorized**
