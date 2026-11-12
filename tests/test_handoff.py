@@ -28,6 +28,17 @@ class OverlayUnitTests(unittest.TestCase):
         self.assertNotIn('CONFIG_PACKAGE_luci-app-openclash=y', c.make_config(base, 'baseline'))
         self.assertIn('CONFIG_PACKAGE_luci-app-openclash=y', c.make_config(base, 'performance'))
 
+    def test_baseline_drops_author_proxy_and_docker_leftovers(self):
+        c = load_configure()
+        base = (ROOT / 'configs/rax3000z-emmc.config').read_text()
+        result = c.make_config(base, 'baseline')
+        c.verify_config(result, 'baseline')
+        for pkg in ('docker', 'dockerd', 'v2raya', 'xray-core', 'zerotier',
+                    'luci-app-docker'):
+            self.assertIn(f'# CONFIG_PACKAGE_{pkg} is not set', result)
+        for pkg in ('kmod-ipt-nat', 'kmod-ifb'):
+            self.assertIn(f'CONFIG_PACKAGE_{pkg}=y', result)
+
     def test_author_led_source_when_merged(self):
         path = ROOT / 'mt7981-cmcc-xr30-emmc.dtsi'
         if not path.exists():

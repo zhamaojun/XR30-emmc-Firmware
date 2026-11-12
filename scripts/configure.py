@@ -13,23 +13,31 @@ COMMON = {
     "luci-app-turboacc-mtk", "luci-app-upnp", "luci-app-diskman",
     "luci-app-ttyd", "luci-compat", "dnsmasq-full", "ca-bundle",
     "curl", "htop",
+    # Base-system dependencies: firewall (kmod-ipt-nat) and MTK eQoS
+    # (kmod-ifb). make defconfig always re-selects these; treating them as
+    # performance-only packages makes every baseline run fail verification.
+    "kmod-ipt-nat", "kmod-ifb",
 }
 PERFORMANCE = {
     "luci-app-openclash", "bash", "ruby", "ruby-yaml", "ip-full",
     "ipset", "unzip", "iptables-mod-tproxy", "iptables-mod-extra",
-    "kmod-ipt-nat", "kmod-tun",
+    "kmod-tun",
     "smartdns", "luci-app-smartdns",
     "wireguard-tools", "kmod-wireguard", "luci-app-wireguard",
     "docker", "dockerd", "luci-app-dockerman", "luci-lib-docker",
 }
 FULL = {
     "adguardhome", "tailscale", "luci-app-store",
-    "luci-app-sqm", "sqm-scripts", "kmod-sched-cake", "kmod-ifb",
+    "luci-app-sqm", "sqm-scripts", "kmod-sched-cake",
 }
 # Remove overlapping/obsolete services from the author's very large baseline.
 REMOVE = {
     "luci-app-turboacc", "luci-app-ssr-plus", "luci-app-v2raya",
-    "luci-app-zerotier", "luci-app-adbyby-plus", "luci-app-accesscontrol",
+    "luci-app-zerotier", "luci-app-docker",
+    # Author's config also enabled the proxy/VPN runtimes themselves; they
+    # pull kmod-tun, iptables-mod-tproxy and iptables-mod-extra into baseline.
+    "v2raya", "xray-core", "zerotier",
+    "luci-app-adbyby-plus", "luci-app-accesscontrol",
     "luci-app-airplay2", "luci-app-shairplay", "luci-app-autoreboot",
     "luci-app-ramfree", "luci-app-guest-wifi", "luci-app-socat",
     "luci-app-usb-printer", "luci-app-filetransfer",
