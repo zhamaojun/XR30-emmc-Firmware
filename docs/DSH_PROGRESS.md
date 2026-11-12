@@ -19,6 +19,7 @@ Agent: DSH (baseline CI verified 2026-11-13)
 | 2026-11-13 03:50 | `feat/ci-size-gate-and-feed-evidence` | Added p4/p5 size gate (kernel 32 MiB, rootfs 2 GiB) to `verify_images.py`; workflow now records per-feed commit SHAs and uploads `feeds-shas.txt` / OpenClash SHA | doctor PASS; 9 unit tests OK | Size gate ready for artifact audit | Apply gate to baseline artifact when run completes |
 | 2026-11-13 03:58 | `feat/ci-size-gate-and-feed-evidence` | Found duplicate OpenClash risk: luci feed ships 0.45.141-beta while `custom_prepare.sh` clones upstream 0.48.002 into `package/`. Workflow now removes the feed copy for performance/full so the package name is defined once | — | Prepared for performance profile | Validate during performance build |
 | 2026-11-13 04:35 | main `531337c` | Baseline run #2 succeeded; artifact `xr30-baseline-2` downloaded and audited with the new size gate | https://github.com/zhamaojun/Actions-rax3000z-emmc/actions/runs/43290704198 | PASS: kernel 3,612,842 B ≤ 32 MiB, root 57,720,832 B ≤ 2 GiB; sysupgrade SHA256 `a77ecd98…`; manifest 427 packages | Dispatch performance |
+| 2026-11-13 05:47 | main `ba9700a` | Performance run #3 succeeded; artifact `xr30-performance-3` downloaded and audited | https://github.com/zhamaojun/Actions-rax3000z-emmc/actions/runs/43302919486 | PASS: kernel 3,614,110 B ≤ 32 MiB, root 87,412,736 B ≤ 2 GiB; sysupgrade SHA256 `57fab6c1…`; manifest 471 packages; OpenClash `e553e82e…` | Dispatch full |
 
 ## Build evidence — baseline (verified)
 - Source SHA: `ab766cbcb0cc22a64e8bf816443bf3e1a56614bd`
@@ -33,5 +34,21 @@ Agent: DSH (baseline CI verified 2026-11-13)
 - Root extracted bytes: `57,720,832`
 - Supported devices metadata: target `cmcc_rax3000m-emmc`, model `CMCC RAX3000M eMMC version`, device `cmcc,rax3000m-emmc`
 - Package manifest: `immortalwrt-mediatek-mt7981-baseline.manifest` (427 packages, in artifact)
+- Version: `r0-ab766cb`
+- Router flash: **NOT authorized**
+
+## Build evidence — performance (verified)
+- Source SHA: `ab766cbcb0cc22a64e8bf816443bf3e1a56614bd`
+- Package feeds SHAs (`feeds-shas.txt`): `luci 5829eabba50ec0afa17d2ee486bc90dc15180c34`, `packages e09f3c7d1903cfe7f523e209ab3ec778013ba309`, `routing a9e43101bb726070cbf81b6225fc0625f4a4a5e5`, `telephony 920fbc5c0a2e4badf51bceff42e9a1e3eb693462`
+- OpenClash SHA: `e553e82e01c697aefbe1555261a503f425e00ccd`
+- iStore SHA: n/a for performance
+- Profile: performance
+- CI URL: https://github.com/zhamaojun/Actions-rax3000z-emmc/actions/runs/43302919486 (success)
+- Image SHA256: `57fab6c1d529d5d6624d8f8f030c863e9cc2f0e04c6bf984ba19417c42752f89` (sysupgrade)
+- Kernel extracted bytes: `3,614,110`
+- Root extracted bytes: `87,412,736`
+- Supported devices metadata: target `cmcc_rax3000m-emmc`, model `CMCC RAX3000M eMMC version`, device `cmcc,rax3000m-emmc`
+- Package manifest: `immortalwrt-mediatek-mt7981-performance.manifest` (471 packages, in artifact)
+- Included: `luci-app-openclash`, `luci-app-smartdns`, `wireguard-tools`, `docker`, `dockerd`
 - Version: `r0-ab766cb`
 - Router flash: **NOT authorized**
