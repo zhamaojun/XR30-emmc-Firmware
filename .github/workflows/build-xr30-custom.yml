@@ -1,0 +1,132 @@
+name: XR30 eMMC - Custom ImmortalWrt (unverified)
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Choose profile; run baseline first'
+        required: true
+        type: choice
+        options:
+          - baseline
+          - performance
+          - full
+        default: baseline
+      source_ref:
+        description: 'hanwckf openwrt-21.02 branch or audited commit SHA'
+        type: string
+        required: true
+        default: 'openwrt-21.02'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xr30-${{ github.ref }}-${{ inputs.profile }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Compile ${{ inputs.profile }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      TZ: Asia/Shanghai
+      PROFILE: ${{ inputs.profile }}
+      SOURCE_REF: ${{ inputs.source_ref }}
+    steps:
+      - name: Checkout own fork / overlay
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential git gawk gettext flex bison cmake ccache \
+            gcc-multilib g++-multilib libncurses-dev zlib1g-dev \
+            libssl-dev libelf-dev python3 python3-distutils \
+            python3-setuptools python3-pyelftools unzip rsync \
+            curl wget file subversion swig time perl \
+            tar xz-utils zstd device-tree-compiler
+
+      - name: Clone hanwckf source
+        run: |
+          set -euo pipefail
+          git clone --depth=1 --branch openwrt-21.02 \
+            https://github.com/hanwckf/immortalwrt-mt798x.git openwrt
+          if [ "$SOURCE_REF" != 'openwrt-21.02' ]; then
+            git -C openwrt fetch --depth=1 origin "$SOURCE_REF"
+            git -C openwrt checkout --detach FETCH_HEAD
+          fi
+          echo "Source: $(git -C openwrt rev-parse HEAD)"
+
+      - name: Prepare third-party packages (no changes to router)
+        run: |
+          bash scripts/custom_prepare.sh "$PROFILE" "$GITHUB_WORKSPACE/openwrt"
+
+      - name: Update and install package feeds
+        working-directory: openwrt
+        run: |
+          set -euo pipefail
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          if [ "$PROFILE" = 'full' ]; then
+            ./scripts/feeds install -d y -p istore luci-app-store
+          fi
+
+      - name: Apply XR30 LED patch (required)
+        run: |
+          set -euo pipefail
+          DTS='openwrt/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cmcc-rax3000m.dtsi'
+          EMMC_DTS='openwrt/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cmcc-rax3000m-emmc.dts'
+          test -s mt7981-cmcc-xr30-emmc.dtsi
+          test -f "$DTS"
+          test -f "$EMMC_DTS"
+          # New hanwckf DTSI is refactored: patch only LED GPIO and aliases.
+          # Old inline DTSI receives author's original XR30 adaptation.
+          python3 scripts/patch_led.py "$DTS" mt7981-cmcc-xr30-emmc.dtsi
+          # Fail closed if upstream no longer has the known 26MHz field.
+          grep -Eq 'max-frequency[[:space:]]*=[[:space:]]*<26000000>;' "$EMMC_DTS" \
+            || { echo 'ERROR: eMMC DTS does not show 26MHz. Review before continuing.'; exit 1; }
+          grep -n 'max-frequency' "$EMMC_DTS"
+
+      - name: Generate profile config
+        run: |
+          python3 scripts/configure.py \
+            --base configs/rax3000z-emmc.config \
+            --output openwrt/.config \
+            --profile "$PROFILE"
+          make -C openwrt defconfig
+          python3 scripts/configure.py \
+            --verify openwrt/.config \
+            --profile "$PROFILE"
+          cp openwrt/.config selected-config.txt
+          git -C openwrt rev-parse HEAD > upstream-source-sha.txt
+
+      - name: Download dependencies
+        working-directory: openwrt
+        run: |
+          make download -j8 V=s
+
+      - name: Compile firmware (fail on errors)
+        working-directory: openwrt
+        run: |
+          make -j"$(nproc)" V=s
+
+      - name: Verify and inventory images
+        run: |
+          python3 scripts/verify_images.py openwrt/bin/targets/mediatek/mt7981
+
+      - name: Upload build result and evidence (NOT an endorsement for flashing)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xr30-${{ inputs.profile }}-${{ github.run_number }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            openwrt/bin/targets/mediatek/mt7981/
+            selected-config.txt
+            upstream-source-sha.txt
+            image-inventory.txt
