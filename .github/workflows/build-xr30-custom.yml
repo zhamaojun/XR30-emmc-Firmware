@@ -75,6 +75,17 @@ jobs:
             ./scripts/feeds install -d y -p istore luci-app-store
           fi
 
+      - name: Record package feed revisions
+        run: |
+          set -euo pipefail
+          : > feeds-shas.txt
+          for dir in openwrt/feeds/*; do
+            [ -d "$dir/.git" ] || continue
+            printf '%s %s\n' "$(basename "$dir")" "$(git -C "$dir" rev-parse HEAD)" >> feeds-shas.txt
+          done
+          sort -o feeds-shas.txt feeds-shas.txt
+          cat feeds-shas.txt
+
       - name: Apply XR30 LED patch (required)
         run: |
           set -euo pipefail
@@ -129,4 +140,6 @@ jobs:
             openwrt/bin/targets/mediatek/mt7981/
             selected-config.txt
             upstream-source-sha.txt
+            feeds-shas.txt
+            openwrt/openclash-source-sha.txt
             image-inventory.txt
