@@ -103,21 +103,24 @@ jobs:
           sort -o feeds-shas.txt feeds-shas.txt
           cat feeds-shas.txt
 
-      - name: Apply XR30 LED patch (required)
+      - name: Apply XR30 target patches (native LEDs, eMMC pinned to 26MHz)
         run: |
           set -euo pipefail
-          DTS='openwrt/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cmcc-rax3000m.dtsi'
-          EMMC_DTS='openwrt/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cmcc-rax3000m-emmc.dts'
-          test -s mt7981-cmcc-xr30-emmc.dtsi
+          # Upstream's native cmcc_xr30-emmc target already carries the XR30
+          # white LED on GPIO34, so the old LED patch is no longer used (it is
+          # kept in-tree for rollback to the legacy target). Its stock DTS runs
+          # the eMMC at 52 MHz; the author warns that can mean I/O errors or a
+          # non-booting device, so pin 26 MHz and fail closed on surprises.
+          DTS='openwrt/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cmcc-xr30-emmc.dts'
+          DTSI='openwrt/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cmcc-xr30.dtsi'
           test -f "$DTS"
-          test -f "$EMMC_DTS"
-          # New hanwckf DTSI is refactored: patch only LED GPIO and aliases.
-          # Old inline DTSI receives author's original XR30 adaptation.
-          python3 scripts/patch_led.py "$DTS" mt7981-cmcc-xr30-emmc.dtsi
-          # Fail closed if upstream no longer has the known 26MHz field.
-          grep -Eq 'max-frequency[[:space:]]*=[[:space:]]*<26000000>;' "$EMMC_DTS" \
-            || { echo 'ERROR: eMMC DTS does not show 26MHz. Review before continuing.'; exit 1; }
-          grep -n 'max-frequency' "$EMMC_DTS"
+          test -f "$DTSI"
+          python3 scripts/patch_xr30_target.py "$DTS" "$DTSI"
+          grep -q 'max-frequency = <26000000>;' "$DTS"
+          if grep -q '52000000' "$DTS"; then echo 'ERROR: 52 MHz still present'; exit 1; fi
+          grep -q 'gpios = <&pio 34 GPIO_ACTIVE_LOW>;' "$DTSI"
+          grep -n 'max-frequency' "$DTS"
+          grep -n 'white_led' "$DTSI"
 
       - name: Apply default LAN IP (fail-closed)
         run: |
@@ -150,6 +153,12 @@ jobs:
             echo 'ERROR: luci-app-tailscale-lite must stay Lua-only on 21.02'; exit 1
           fi
           grep -q 'require "luci.jsonc"' openwrt/package/luci-app-tailscale-lite/luasrc/model/cbi/tailscale/status.lua
+          # Reversible tuning package must be present and documented.
+          test -s openwrt/package/xr30-network-tuning/Makefile
+          test -s openwrt/package/xr30-network-tuning/files/etc/uci-defaults/99-xr30-network-tuning
+          if grep -qE 'flow_offloading|tcp_fastopen' openwrt/package/xr30-network-tuning/files/etc/uci-defaults/99-xr30-network-tuning; then
+            echo 'ERROR: tuning package must not touch flow-offload or TFO'; exit 1
+          fi
           if [ "$PROFILE" = 'full' ]; then
             test -s openwrt/package/luci-app-adguardhome/Makefile
             test -d openwrt/package/luci-app-adguardhome/luasrc

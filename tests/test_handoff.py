@@ -26,7 +26,9 @@ class OverlayUnitTests(unittest.TestCase):
         for profile in ('baseline', 'performance', 'full'):
             result = c.make_config(base, profile)
             c.verify_config(result, profile)
-            self.assertIn('CONFIG_TARGET_mediatek_mt7981_DEVICE_cmcc_rax3000m-emmc=y', result)
+            # Retargeted to the native XR30 eMMC target.
+            self.assertIn(f'CONFIG_TARGET_mediatek_mt7981_DEVICE_{c.TARGET_DEVICE}=y', result)
+            self.assertNotIn(f'CONFIG_TARGET_mediatek_mt7981_DEVICE_{c.LEGACY_DEVICE}=y', result)
         self.assertNotIn('CONFIG_PACKAGE_luci-app-openclash=y', c.make_config(base, 'baseline'))
         self.assertIn('CONFIG_PACKAGE_luci-app-openclash=y', c.make_config(base, 'performance'))
 
@@ -89,6 +91,23 @@ class OverlayUnitTests(unittest.TestCase):
                           f'{pkg} must be selected in full')
             self.assertNotIn(f'CONFIG_PACKAGE_{pkg}=y', perf,
                              f'{pkg} must not leak into performance')
+        # Tuning rides with performance/full, never baseline.
+        self.assertIn('CONFIG_PACKAGE_xr30-network-tuning=y', perf)
+        self.assertIn('CONFIG_PACKAGE_xr30-network-tuning=y', full)
+        self.assertNotIn('CONFIG_PACKAGE_xr30-network-tuning=y', baseline)
+
+    def test_retarget_drops_legacy_device_and_sets_profile(self):
+        c = load_configure()
+        base = (ROOT / 'configs/rax3000z-emmc.config').read_text()
+        result = c.make_config(base, 'full')
+        self.assertIn(f'CONFIG_TARGET_mediatek_mt7981_DEVICE_{c.TARGET_DEVICE}=y', result)
+        self.assertIn(f'CONFIG_TARGET_PROFILE="DEVICE_{c.TARGET_DEVICE}"', result)
+        # The legacy selection must be gone, both the device flag and the
+        # PROFILE string, or make defconfig would pick the wrong board.
+        self.assertNotIn(f'DEVICE_{c.LEGACY_DEVICE}=y', result)
+        self.assertNotIn(f'CONFIG_TARGET_PROFILE="DEVICE_{c.LEGACY_DEVICE}"', result)
+        self.assertEqual(result.count('CONFIG_TARGET_PROFILE='), 1,
+                         'exactly one target profile line expected')
 
     def test_in_tree_tailscale_page_is_lua_only(self):
         d = ROOT / 'packages/luci-app-tailscale-lite'

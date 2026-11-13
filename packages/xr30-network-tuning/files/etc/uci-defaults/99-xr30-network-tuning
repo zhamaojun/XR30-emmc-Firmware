@@ -1,0 +1,53 @@
+#!/bin/sh
+# Conservative network tuning for MT7981 running a userspace proxy.
+#
+# Everything lands in a clearly marked block in /etc/sysctl.conf, so reverting
+# is: delete the block between the markers and reboot. uci-defaults only runs
+# once, so this will not duplicate on later boots.
+#
+# Deliberately NOT done here, and why:
+#   * flow-offload rules  - must stay mutually exclusive with MTK HNAT
+#   * qdisc / CAKE setup  - SQM is an operator runtime choice, never auto-on
+#   * TCP Fast Open       - this 5.4 kernel is built without CONFIG_TCP_FASTOPEN
+#   * BBR for forwarding  - NAT-forwarded flows never use the local TCP stack,
+#                           so BBR cannot speed them up; it only helps
+#                           router-side downloads and Dockerman image pulls.
+
+MARK_BEGIN='# XR30-NETWORK-TUNING begin'
+MARK_END='# XR30-NETWORK-TUNING end'
+
+# BBR ships as a module here; load it before the sysctl below can apply.
+modprobe tcp_bbr 2>/dev/null
+
+if ! grep -qF "$MARK_BEGIN" /etc/sysctl.conf 2>/dev/null; then
+	cat >> /etc/sysctl.conf <<'EOF'
+
+# XR30-NETWORK-TUNING begin (delete this block and reboot to revert)
+# Socket buffers: improves userspace proxy throughput.
+net.core.rmem_max = 8388608
+net.core.wmem_max = 8388608
+net.ipv4.tcp_rmem = 4096 131072 8388608
+net.ipv4.tcp_wmem = 4096 65536 8388608
+# Backlog and accept queue.
+net.core.netdev_max_backlog = 2048
+net.core.somaxconn = 1024
+# Keep long-lived flows from restarting in slow start.
+net.ipv4.tcp_slow_start_after_idle = 0
+net.ipv4.tcp_mtu_probing = 1
+# Local TCP only; does not affect NAT forwarding.
+net.ipv4.tcp_congestion_control = bbr
+# XR30-NETWORK-TUNING end
+EOF
+fi
+
+# conntrack limits are applied separately: nf_conntrack may not be loaded yet
+# this early in boot, and a failing sysctl line would abort the whole file.
+if [ -d /proc/sys/net/netfilter ]; then
+	if ! grep -qF 'nf_conntrack_max = 32768' /etc/sysctl.conf 2>/dev/null; then
+		sed -i "/^${MARK_END}$/i net.netfilter.nf_conntrack_max = 32768\nnet.netfilter.nf_conntrack_tcp_timeout_established = 600" /etc/sysctl.conf
+	fi
+fi
+
+sysctl -p /etc/sysctl.conf >/dev/null 2>&1
+
+exit 0

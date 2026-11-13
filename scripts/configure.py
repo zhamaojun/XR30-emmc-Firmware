@@ -28,6 +28,9 @@ PERFORMANCE = {
     # Spread NIC interrupts across both A53 cores; Docker and OpenClash on a
     # 2-core SoC otherwise pin most softirq work to CPU0.
     "irqbalance",
+    # Conservative, reversible sysctl tuning (buffers/backlog/local BBR).
+    # Never enables flow-offload, qdisc changes or TCP Fast Open.
+    "xr30-network-tuning",
 }
 FULL = {
     "adguardhome", "tailscale", "luci-app-store",
@@ -63,19 +66,46 @@ PROFILE = {
 }
 PATTERN = re.compile(r"^(?:CONFIG_PACKAGE_|# CONFIG_PACKAGE_)([^=\s]+)(?:=[ym]| is not set)$")
 
+# Target device selection.
+#
+# We build the *native* XR30 eMMC target that upstream added after our old pin,
+# because it carries the XR30 white LED (GPIO34) in its own DTSI and therefore
+# needs no LED patch. Its stock DTS runs the eMMC at 52 MHz, which the author's
+# README warns can cause I/O errors or a non-booting device on marginal flash;
+# scripts/patch_xr30_target.py pins it back to 26 MHz (what this unit has always
+# run). The legacy target is kept below so a rollback stays a one-line change.
+TARGET_DEVICE = "cmcc_xr30-emmc"
+LEGACY_DEVICE = "cmcc_rax3000m-emmc"
+
+
+def target_line(device):
+    return f"CONFIG_TARGET_mediatek_mt7981_DEVICE_{device}=y"
+
+
+def profile_line(device):
+    return f'CONFIG_TARGET_PROFILE="DEVICE_{device}"'
+
 
 def parse_enabled(text):
     return set(re.findall(r"^CONFIG_PACKAGE_([^=\n]+)=y$", text, flags=re.M))
 
 
 def make_config(base, profile):
-    if "CONFIG_TARGET_mediatek_mt7981_DEVICE_cmcc_rax3000m-emmc=y" not in base:
+    if target_line(LEGACY_DEVICE) not in base:
         raise ValueError("Base is NOT the author's RAX3000M eMMC target config; refusing")
     desired = PROFILE[profile]
     # Everything not selected by our profile but explicitly unwanted is disabled.
     overrides = set(desired) | REMOVE | PERFORMANCE | FULL
-    body = [line for line in base.splitlines() if not
-            ((m := PATTERN.match(line)) and m.group(1) in overrides)]
+    body = []
+    for line in base.splitlines():
+        # Drop the legacy target selection; we retarget explicitly below.
+        if line == target_line(LEGACY_DEVICE) or line == profile_line(LEGACY_DEVICE):
+            continue
+        if (m := PATTERN.match(line)) and m.group(1) in overrides:
+            continue
+        body.append(line)
+    body.append(target_line(TARGET_DEVICE))
+    body.append(profile_line(TARGET_DEVICE))
     body += [f"CONFIG_PACKAGE_{pkg}=y" for pkg in sorted(desired)]
     body += [f"# CONFIG_PACKAGE_{pkg} is not set" for pkg in sorted(overrides - desired)]
     return "\n".join(body) + "\n"
@@ -84,8 +114,10 @@ def make_config(base, profile):
 def verify_config(config, profile):
     enabled = parse_enabled(config)
     missing = sorted(PROFILE[profile] - enabled)
-    if "CONFIG_TARGET_mediatek_mt7981_DEVICE_cmcc_rax3000m-emmc=y" not in config:
-        raise ValueError("Wrong target after make defconfig")
+    if target_line(TARGET_DEVICE) not in config:
+        raise ValueError(f"Wrong target after make defconfig: expected {TARGET_DEVICE}")
+    if target_line(LEGACY_DEVICE) in config:
+        raise ValueError(f"Legacy target {LEGACY_DEVICE} still selected; retargeting failed")
     if missing:
         raise ValueError("Selected packages absent after make defconfig; feeds/Kconfig incompatible: " + ", ".join(missing))
     forbidden = sorted((REMOVE | (PERFORMANCE | FULL) - PROFILE[profile]) & enabled)

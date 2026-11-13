@@ -13,6 +13,7 @@ required = [
     'docs/verified-device-layout.md',
     '.github/workflows/build-xr30-custom.yml',
     'scripts/configure.py', 'scripts/custom_prepare.sh', 'scripts/patch_led.py',
+    'scripts/patch_xr30_target.py',
     'scripts/firmware_preflight.py', 'scripts/verify_images.py',
     'configs/rax3000z-emmc.config', 'mt7981-cmcc-xr30-emmc.dtsi',
     # In-tree LuCI package: Lua/CBI Tailscale page for the Lua LuCI in 21.02.
@@ -21,6 +22,9 @@ required = [
     'packages/luci-app-tailscale-lite/luasrc/model/cbi/tailscale/status.lua',
     'packages/luci-app-tailscale-lite/root/usr/share/rpcd/acl.d/luci-app-tailscale-lite.json',
     'packages/luci-app-tailscale-lite/root/etc/uci-defaults/90-luci-app-tailscale-lite',
+    # Reversible network tuning.
+    'packages/xr30-network-tuning/Makefile',
+    'packages/xr30-network-tuning/files/etc/uci-defaults/99-xr30-network-tuning',
 ]
 for name in required:
     if not (root / name).is_file():
@@ -59,18 +63,24 @@ if legacy.exists():
 workflow = root / '.github/workflows/build-xr30-custom.yml'
 if workflow.exists():
     y = workflow.read_text(encoding='utf-8')
-    for expected in ['scripts/configure.py', 'scripts/patch_led.py', 'make download', 'make -j',
+    for expected in ['scripts/configure.py', 'scripts/patch_xr30_target.py', 'make download', 'make -j',
                      'baseline', 'performance', 'full',
+                     'Apply XR30 target patches',
                      'Apply default LAN IP (fail-closed)',
                      'Verify third-party and in-tree package sources',
                      'kenzok8-source-sha.txt']:
         if expected not in y:
             errors.append('Workflow missing expected step: ' + expected)
+    # The legacy LED patch must not be wired into the build any more; the
+    # native target owns the LEDs. Keeping it unused is fine (rollback path).
+    if 'scripts/patch_led.py' in y:
+        errors.append('Workflow still invokes the legacy LED patch; native target should own LEDs')
     # Check no unintentional firmware flash on the CI runner.
     if re.search(r'(?m)^\s*run:\s*(?:ssh|sysupgrade|mtd\s+write)', y):
         errors.append('Suspicious flash-like workflow step')
 
-for name in ['scripts/configure.py', 'scripts/patch_led.py', 'scripts/firmware_preflight.py', 'scripts/verify_images.py']:
+for name in ['scripts/configure.py', 'scripts/patch_led.py', 'scripts/patch_xr30_target.py',
+             'scripts/firmware_preflight.py', 'scripts/verify_images.py']:
     p=root/name
     if p.is_file():
         try:
