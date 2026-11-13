@@ -17,6 +17,11 @@ on:
         type: string
         required: true
         default: 'openwrt-21.02'
+      lan_ip:
+        description: 'Default LAN IP (patched into config_generate at build time)'
+        type: string
+        required: true
+        default: '192.168.2.1'
 
 permissions:
   contents: read
@@ -35,6 +40,7 @@ jobs:
       TZ: Asia/Shanghai
       PROFILE: ${{ inputs.profile }}
       SOURCE_REF: ${{ inputs.source_ref }}
+      LAN_IP: ${{ inputs.lan_ip }}
     steps:
       - name: Checkout own fork / overlay
         uses: actions/checkout@v4
@@ -113,6 +119,24 @@ jobs:
             || { echo 'ERROR: eMMC DTS does not show 26MHz. Review before continuing.'; exit 1; }
           grep -n 'max-frequency' "$EMMC_DTS"
 
+      - name: Apply default LAN IP (fail-closed)
+        run: |
+          set -euo pipefail
+          CFG='openwrt/package/base-files/files/bin/config_generate'
+          test -f "$CFG"
+          # Validate dotted-quad to keep sed injection impossible
+          [[ "$LAN_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || { echo "ERROR: invalid LAN_IP '$LAN_IP'"; exit 1; }
+          IFS=. read -r o1 o2 o3 o4 <<< "$LAN_IP"
+          for o in "$o1" "$o2" "$o3" "$o4"; do
+            [ "$o" -le 255 ] || { echo "ERROR: LAN_IP octet > 255: '$LAN_IP'"; exit 1; }
+          done
+          grep -q '192\.168\.1\.1' "$CFG" || { echo 'ERROR: default LAN IP anchor not found; upstream drifted, manual audit required'; exit 1; }
+          sed -i "s/192\.168\.1\.1/${LAN_IP}/g" "$CFG"
+          grep -q "ipaddr='${LAN_IP}'" "$CFG" || { echo 'ERROR: LAN IP patch verification failed'; exit 1; }
+          if grep -q '192\.168\.1\.1' "$CFG"; then echo 'ERROR: old LAN IP still present'; exit 1; fi
+          echo "Default LAN IP set to ${LAN_IP}"
+          echo "${LAN_IP}" > lan-ip.txt
+
       - name: Generate profile config
         run: |
           python3 scripts/configure.py \
@@ -154,3 +178,4 @@ jobs:
             feeds-shas.txt
             openwrt/openclash-source-sha.txt
             image-inventory.txt
+            lan-ip.txt
