@@ -2,9 +2,10 @@
 from pathlib import Path
 import importlib.util
 import subprocess
-import tempfile
-import unittest
 import sys
+import unittest
+
+from _tempdir_helper import test_tempdir
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -47,7 +48,7 @@ class OverlayUnitTests(unittest.TestCase):
 
     def test_new_layout_led_patch_keeps_shared_include(self):
         content = """/dts-v1/;\n#include "mt7981-cmcc-rax3000m-xr30.dtsi"\n/ {\n\taliases {\n\t\tled-running = &green_led;\n\t\tled-upgrade = &blue_led;\n\t};\n\tleds {\n\t\tgreen_led: green {\n\t\t\tlabel = "rax3000m:green";\n\t\t\tgpios = <&pio 9 GPIO_ACTIVE_LOW>;\n\t\t};\n\n\t\tblue_led: blue {\n\t\t\tlabel = "rax3000m:blue";\n\t\t\tgpios = <&pio 12 GPIO_ACTIVE_LOW>;\n\t\t};\n\t};\n};\n"""
-        with tempfile.TemporaryDirectory() as temp:
+        with test_tempdir() as temp:
             fixture = Path(temp) / 'legacy.dtsi'
             fixture.write_text('/dts-v1/;\nwhite_led: white {\n  gpios = <&pio 34 GPIO_ACTIVE_LOW>;\n};\n')
             p = Path(temp) / 'input.dtsi'
@@ -62,7 +63,7 @@ class OverlayUnitTests(unittest.TestCase):
             self.assertNotIn('blue_led', patched)
 
     def test_source_drift_fails_closed(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with test_tempdir() as temp:
             fixture=Path(temp)/'legacy.dtsi';fixture.write_text('white_led: white { gpios = <&pio 34 GPIO_ACTIVE_LOW>; };\n')
             p=Path(temp)/'input.dtsi';p.write_text('#include "unknown-board.dtsi"\n')
             r=subprocess.run([sys.executable,str(ROOT/'scripts/patch_led.py'),str(p),str(fixture)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)

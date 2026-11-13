@@ -1,11 +1,13 @@
 # RAX3000Z 增强版 XR30 eMMC — GitHub Actions 定制叠加包（实验性）
 
-> 基于 Star-Song/Actions-rax3000z-emmc 的定制叠加包。**不是已经编译通过或验证过刷机的固件**。2026-11 核查，原作者构建基于 hanwckf 的 `openwrt-21.02`/Linux 5.4 分支；21.02 官方已 EOL。此项目只构建，不刷路由器、不更改 EEPROM、不写 eMMC 分区。
+> 本项目自 2026-11-13 起由仓库所有者**独立维护**，历史致谢 Star-Song/Actions-rax3000z-emmc（已停更）。**不是已经验证过刷机的固件**。构建基于 hanwckf 的 `openwrt-21.02`/Linux 5.4 分支（pin `ab766cb`）；21.02 官方已 EOL。此项目只构建，不刷路由器、不更改 EEPROM、不写 eMMC 分区。
 
 ## 使用方式
 
-1. 先 Fork：<https://github.com/Star-Song/Actions-rax3000z-emmc>。
-2. 把本 ZIP 内的 `.github/workflows/build-xr30-custom.yml`、`scripts/*`、`docs/*`、`README-CUSTOM.md` 复制到 Fork 仓库相同路径，**保留原仓库**的 `configs/rax3000z-emmc.config` 和 `mt7981-cmcc-xr30-emmc.dtsi`。
+> 以下为历史接入步骤，仅供回溯。**当前直接使用本仓库即可**，无需再 fork 作者仓库。
+
+1. ~~先 Fork：<https://github.com/Star-Song/Actions-rax3000z-emmc>~~（已停更，本项目自 2026-11-13 起独立维护，clone 本仓库即可）。
+2. 本仓库已内置 `.github/workflows/build-xr30-custom.yml`、`scripts/*`、`docs/*`，以及 `configs/rax3000z-emmc.config` 和 `mt7981-cmcc-xr30-emmc.dtsi`。
 3. GitHub → Actions → `XR30 eMMC - Custom ImmortalWrt (unverified)` → `Run workflow` → 首先选择 `baseline`。
 4. `baseline` 成功后运行 `performance`，再运行 `full`。每个阶段都查看 Kconfig 检查、编译日志和 sha256 清单。
 5. 请勿根据生成文件名直接刷机！必须核对实际 U-Boot、分区布局和镜像 header，再建立恢复方案。
@@ -52,7 +54,7 @@
 
 ## 资料
 
-- 原作者：<https://github.com/Star-Song/Actions-rax3000z-emmc>
+- 历史致谢（已停更）：<https://github.com/Star-Song/Actions-rax3000z-emmc>
 - 上游源码：<https://github.com/hanwckf/immortalwrt-mt798x>
 - OpenClash：<https://github.com/vernesong/OpenClash>
 - iStore：<https://github.com/linkease/istore>

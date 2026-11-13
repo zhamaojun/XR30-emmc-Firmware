@@ -1,5 +1,7 @@
 **闭源驱动** | [开源驱动](README_mainline.md)
 
+> **2026-11-13 起本仓库由所有者独立维护**，不再同步上游（原 Star-Song 项目已停更）。经过审计的自定义构建请走 `XR30 eMMC - Custom ImmortalWrt (unverified)` 工作流与 `docs/PREFLASH_REPORT.md`；下方为原项目历史说明。
+
 # Actions-rax3000z-emmc
 使用 GitHub Actions 在线编译定制 CMCC RAX3000Z eMMC version （RAX3000Z增强版-XR30）的 immortalwrt-mt798x 固件
 

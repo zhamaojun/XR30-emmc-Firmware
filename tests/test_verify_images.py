@@ -4,8 +4,9 @@ import io
 import pathlib
 import sys
 import tarfile
-import tempfile
 import unittest
+
+from _tempdir_helper import test_tempdir
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -29,7 +30,7 @@ def write_image(path, kernel_size, root_size, folder="sysupgrade-cmcc_rax3000m-e
 class VerifyImagesTests(unittest.TestCase):
     def test_tar_sizes_reads_kernel_and_root(self):
         v = load_verify()
-        with tempfile.TemporaryDirectory() as temp:
+        with test_tempdir() as temp:
             image = pathlib.Path(temp) / "openwrt-sysupgrade.bin"
             write_image(image, 1024, 2048)
             self.assertEqual(v.tar_sizes(image), (1024, 2048))
@@ -42,7 +43,7 @@ class VerifyImagesTests(unittest.TestCase):
 
     def test_main_fails_on_oversized_kernel(self):
         v = load_verify()
-        with tempfile.TemporaryDirectory() as temp:
+        with test_tempdir() as temp:
             temp_path = pathlib.Path(temp)
             write_image(temp_path / "x-sysupgrade.bin", v.KERNEL_LIMIT + 1, 4096)
             old_cwd, old_argv = pathlib.Path.cwd(), sys.argv
@@ -58,7 +59,7 @@ class VerifyImagesTests(unittest.TestCase):
 
     def test_main_passes_fitting_image(self):
         v = load_verify()
-        with tempfile.TemporaryDirectory() as temp:
+        with test_tempdir() as temp:
             temp_path = pathlib.Path(temp)
             write_image(temp_path / "x-sysupgrade.bin", 1024, 2048)
             old_cwd, old_argv = pathlib.Path.cwd(), sys.argv

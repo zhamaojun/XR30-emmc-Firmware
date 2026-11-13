@@ -1,10 +1,10 @@
 # RAX3000Z XR30 eMMC — DeepSeek Harness 项目接入
 
-此包为 **Star-Song/Actions-rax3000z-emmc Fork 仓库的文件叠加包**，不是新的完整源码仓库，也不是可刷写固件。结合已完成的 V3 Overlay 与 DeepSeek Harness 交接说明。
+此包历史来源为 **Star-Song/Actions-rax3000z-emmc**（已停更）的文件叠加包；**本仓库自 2026-11-13 起独立维护**，新接入直接 clone 本仓库即可，无需再 fork 作者仓库。本包不是完整源码仓库，也不是可刷写固件。结合已完成的 V3 Overlay 与 DeepSeek Harness 交接说明。
 
 ## Windows 10：推荐安装流程
 
-1. 先到 <https://github.com/Star-Song/Actions-rax3000z-emmc/fork> Fork 到自己的 GitHub 账号（不是在作者的仓库直接修改）。
+1. ~~先到 <https://github.com/Star-Song/Actions-rax3000z-emmc/fork> Fork 到自己的 GitHub 账号~~（历史步骤；作者仓库已停更，本项目独立维护后直接 clone 本仓库即可）。
 2. 安装 [Git for Windows](https://git-scm.com/downloads/win) 和 Node.js 官方当前稳定版本（建议 24.9+）。如只有 GitHub 网页，也可以先手动上传 ZIP 的文件到你的 Fork。
 3. 解压本 ZIP 到一个**临时**文件夹，例如 `D:\XR30-DSH-Kit`。打开 Windows PowerShell：
 

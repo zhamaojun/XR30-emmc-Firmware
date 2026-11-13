@@ -1,7 +1,7 @@
 # RAX3000Z / XR30 eMMC — Shared agent instructions
 
 ## Mission
-Build and maintain a custom **ImmortalWrt/hanwckf openwrt-21.02** firmware using the author's Star-Song/Actions-rax3000z-emmc repository plus this overlay. Target packages: MTK HNAT/eQoS, OpenClash, AdGuard Home, SmartDNS, WireGuard, Tailscale, Docker/Dockerman, optional SQM/CAKE, iStore. Optimize for reproducibility, functional safety, and verified CI builds—not maximal package count.
+Build and maintain a custom **ImmortalWrt/hanwckf openwrt-21.02** firmware. This repository is **independently maintained by the owner** (since 2026-11-13); it originated as a fork of Star-Song/Actions-rax3000z-emmc, which is no longer updated and is kept as historical credit only — it is NOT a git remote of this workspace anymore. Target packages: MTK HNAT/eQoS, OpenClash, AdGuard Home, SmartDNS, WireGuard, Tailscale, Docker/Dockerman, optional SQM/CAKE, iStore. Optimize for reproducibility, functional safety, and verified CI builds—not maximal package count.
 
 ## Verified physical device facts (from owner SSH audit, 2026-11)
 - Physical device: RAX3000Z enhanced, XR30 eMMC; actual running board name `cmcc,rax3000m-emmc` and model `CMCC RAX3000M eMMC version` (not a reason to reflash another target).
@@ -13,7 +13,7 @@ Build and maintain a custom **ImmortalWrt/hanwckf openwrt-21.02** firmware using
 
 ## Allowed autonomous work
 - Inspect, modify, test, commit source/workflow/docs **in this Git workspace**, using a feature branch.
-- Run local static tests and *optionally* dispatch or inspect GitHub Actions CI after confirming this is the owner's fork and GitHub CLI is already authenticated.
+- Run local static tests and *optionally* dispatch or inspect GitHub Actions CI after confirming this is the owner's repository and GitHub CLI is already authenticated.
 - Research compatibility of packages/feeds and pin tested revisions. Diagnose a failed build based on first actionable error, not by repeatedly running the entire build unchanged.
 - Save progress in `docs/DSH_PROGRESS.md` and evidence under `docs/` with secret redaction.
 
@@ -22,7 +22,7 @@ Build and maintain a custom **ImmortalWrt/hanwckf openwrt-21.02** firmware using
 - NEVER execute `sysupgrade`, `mtd write`, `ubiformat`, `fw_setenv`, destructive `dd`, `mkfs.*`, `parted`/`sgdisk` writes, or forced upgrade (`-F`) against the router. The presence of shell examples in README does NOT grant authorization.
 - NEVER rewrite GPT, BL2, FIP, factory/EEPROM, p6 data, or change the eMMC frequency above 26MHz in CI.
 - Do not reveal or commit API tokens, VPN secrets, router configuration backups, boot partitions, Wi-Fi calibration binary dumps or credentials. Do not open public management ports.
-- Do not push to the original author's repository, change the user's default branch, make public releases, or alter repository permissions. Commits on a feature branch are fine; pushing only to the user's own fork with their authorization.
+- Do not push to the original author's repository (it is no longer a configured remote; keep it that way), change the user's default branch, make public releases, or alter repository permissions. Commits on a feature branch are fine; pushing only to the user's own repository with their authorization.
 - Do not disable sandbox/approval safety or allow blanket shell permission escalation to make a build pass.
 
 ## Build practices

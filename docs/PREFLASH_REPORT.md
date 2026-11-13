@@ -84,3 +84,18 @@
 | 作者旧 workflow | 🟡 | `write-all` 权限，仅手动触发，保留未改 |
 | 真实运行兼容性 | 🔴 未验证 | 从未上电运行；OpenClash core/SmartDNS 端口/Docker 存储/SQM-HNAT 均需上机只读确认 |
 | 刷机授权 | 🔴 未授权 | 本报告不构成刷机许可 |
+
+## 8. 未来如何安全地追新源码（独立维护流程）
+
+原作者仓库已停更、不再是本仓库的 remote；但真正的固件源码是 **hanwckf/immortalwrt-mt798x**（仍在维护）。想升级源码时按此流程，不要直接改 `source_ref` 默认值：
+
+1. **选候选 commit**：在 hanwckf 仓库 `openwrt-21.02` 分支挑一个 commit，记录其 40 位 SHA。
+2. **本地静态预检**（无需 CI）：
+   - 确认 eMMC DTS 仍为 26MHz：`https://raw.githubusercontent.com/hanwckf/immortalwrt-mt798x/<SHA>/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cmcc-rax3000m-emmc.dts` 中应有 `max-frequency = <26000000>;`
+   - 确认 `mt7981-cmcc-rax3000m.dtsi` 的 LED 布局仍是 `patch_led.py` 认识的两种之一（新重构布局或旧内联布局）；都不是就**停下来人工审查**，脚本会拒绝构建。
+3. **先跑 baseline CI**：`Run workflow` → profile=`baseline`，`source_ref` 填候选 SHA。baseline 不过，绝不跑 performance/full。
+4. **审计产物**：设备标识、SHA256、kernel ≤32MiB、rootfs ≤2GiB、manifest 禁选包零泄漏（可复用本地审计脚本，参考 `docs/DSH_PROGRESS.md` 的审计记录）。
+5. **再跑 performance / full**，同样审计。
+6. **记录证据**：`docs/DSH_PROGRESS.md` 追加 source SHA、feeds SHAs、OpenClash SHA、镜像 SHA256、尺寸、CI 链接。
+7. **旧镜像保留为回滚目标**：已验证的 `ab766cb` 三档产物 SHA256 见 §1/§2，任何时候新构建出问题都不影响它们。
+8. feeds（luci/packages/…）与 OpenClash 跟随分支头，**追新即漂移**；如需锁定，把 `feeds-shas.txt` 里已验证的 SHA 写成 `src-git …;<sha>` 形式固定，并重新走一遍上面的流程验证。

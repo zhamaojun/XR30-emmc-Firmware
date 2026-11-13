@@ -3,6 +3,8 @@
 ## Goal and status
 User wants DeepSeek Harness to autonomously continue the GitHub Actions-based custom firmware from existing Star-Song sources. The user has already booted the original author's image and confirmed `cmcc,rax3000m-emmc`. No immediate flashing, hardware access, or root password action. Agent goal is **reproducible CI builds with evidence**.
 
+> **2026-11-13 update**: the author's repository is no longer updated and has been removed as a git remote; this repository is now independently maintained by the owner. Phases 0–4 below are complete (see `docs/DSH_TASKS.md` and `docs/PREFLASH_REPORT.md`); this handoff remains as historical context.
+
 ## Existing verified device facts
 - Version: ImmortalWrt 21.02-SNAPSHOT r20571-ab766cbcb0, mediatek/mt7981.
 - Board: `cmcc,rax3000m-emmc`; reported model `CMCC RAX3000M eMMC version`, even though chassis is RAX3000Z Enhanced XR30.
