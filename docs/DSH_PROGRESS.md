@@ -26,6 +26,29 @@ Agent: DSH (baseline CI verified 2026-11-13)
 | 2026-11-13 16:15 | main `791d641` | Fixed LAN IP verification pattern (`ipad=${ipaddr:-"..."}` not `ipaddr='...'`); CI run 43382017385 succeeded; artifact `xr30-full-6` verified: SHA256 `992f99da…`, `lan-ip.txt` = 192.168.2.1 | https://github.com/zhamaojun/XR30-emmc-Firmware/actions/runs/43382017385 | PASS kernel 3,614,398 B / root 102,905,856 B; owner flashed via U-Boot, booted to `r0-ab766cb` | Post-flash menu review |
 | 2026-11-13 18:40 | `feat/tailscale-agh-menus` | Post-flash UI gap work. Verified DiskMan deps were already complete (`parted`/`blkid`/`smartmontools` present) — earlier "smartctl missing" report was a package-name mistake. Added: `irqbalance` (performance+full), `luci-app-adguardhome` (kenzok8 pinned `8099fdd5…`, Lua/CBI, 21.02-compatible), in-tree `packages/luci-app-tailscale-lite` (Lua/CBI, because every upstream luci-app-tailscale is JS-view and needs 22.03+), plus `luci-app-statistics`/`vnstat2`/`watchcat`/`wol` | — | doctor PASS; 19 unit tests OK (incl. Lua structure check) | Rebuild full, reflash |
 
+## 2026-11-13 source bump: ab766cb (2024-06) → 740103d (2026-09)
+- Owner asked whether builds were still on an old base. They were: `ab766cb` is
+  2024-06-13, upstream `openwrt-21.02` head is `740103d655bcee6da7bc3b49b1cfdfdee4cd5bb6`
+  (2026-09-11) — 86 commits, 300 files.
+- Pre-flight checks against 740103d before switching (all verified, not assumed):
+  - eMMC DTS for our target still `max-frequency = <26000000>` ✅
+  - kernel still 5.4 (`KERNEL_PATCHVER:=5.4`) ✅
+  - device id/model unchanged (`cmcc,rax3000m-emmc`) ✅
+  - DTS refactored into three layers; `mt7981-cmcc-rax3000m.dtsi` now only holds
+    LEDs and includes `mt7981-cmcc-rax3000m-xr30.dtsi` (shared eth/gsw/hnat/xhci)
+  - `patch_led.py` new-layout branch matched it exactly: 7/7 checks pass
+    (now covered by `tests/test_upstream_dts_layout.py`)
+- **Deliberate decision: keep target `cmcc_rax3000m-emmc`, do NOT switch to the
+  new native `cmcc_xr30-emmc` target.** Upstream 740103d added that native target
+  with white LED GPIO34 built in, but its DTS sets `max-frequency = <52000000>`
+  (52 MHz) and `compatible = "cmcc,xr30-emmc"`. The author's own README warns
+  52 MHz can cause eMMC I/O errors or a non-booting device on marginal flash,
+  and this unit has always run 26 MHz. Switching would also change board_name
+  away from what the device reports. So: newer source, same 26 MHz target,
+  same board_name, LED handled by the existing patch.
+- Workflow now pins the source by commit SHA (the default is that SHA) instead of
+  cloning the moving branch head, so builds are reproducible.
+
 ## 2026-11-13 LuCI compatibility finding (why Tailscale needed an in-tree package)
 - Upstream `luci-app-tailscale` (asvow v1.1.1–v1.2.6, gw826943555, whzhni1) all ship
   `htdocs/luci-static/resources/view/tailscale/*.js` using `'require view'; return view.extend({...})`.

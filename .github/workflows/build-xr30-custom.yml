@@ -13,10 +13,10 @@ on:
           - full
         default: baseline
       source_ref:
-        description: 'hanwckf openwrt-21.02 branch or audited commit SHA'
+        description: 'hanwckf openwrt-21.02 audited commit SHA (branch names drift)'
         type: string
         required: true
-        default: 'openwrt-21.02'
+        default: '740103d655bcee6da7bc3b49b1cfdfdee4cd5bb6'
       lan_ip:
         description: 'Default LAN IP (patched into config_generate at build time)'
         type: string
@@ -59,12 +59,12 @@ jobs:
       - name: Clone hanwckf source
         run: |
           set -euo pipefail
-          git clone --depth=1 --branch openwrt-21.02 \
-            https://github.com/hanwckf/immortalwrt-mt798x.git openwrt
-          if [ "$SOURCE_REF" != 'openwrt-21.02' ]; then
-            git -C openwrt fetch --depth=1 origin "$SOURCE_REF"
-            git -C openwrt checkout --detach FETCH_HEAD
-          fi
+          # Fetch the pinned commit directly. The branch head moves, so a
+          # branch name would make every build different.
+          git init openwrt
+          git -C openwrt remote add origin https://github.com/hanwckf/immortalwrt-mt798x.git
+          git -C openwrt fetch --depth=1 origin "$SOURCE_REF"
+          git -C openwrt checkout --detach FETCH_HEAD
           echo "Source: $(git -C openwrt rev-parse HEAD)"
 
       - name: Prepare third-party packages (no changes to router)

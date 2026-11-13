@@ -12,7 +12,7 @@
 | 机型字符串 | `CMCC RAX3000M eMMC version` | DTS `model` 一致（上游 `ab766cb` 核对） | ✅ |
 | 架构 | `aarch64_cortex-a53` | `aarch64_cortex-a53`（mediatek/mt7981） | ✅ |
 | 启动方式 | `root=PARTLABEL=rootfs rootwait` | eMMC DTS bootargs 一致 | ✅ |
-| 上游源码 | 当前固件 `r20571-ab766cbcb0` | 构建 pin `ab766cbcb0cc22a64e8bf816443bf3e1a56614bd`（同一 commit） | ✅ |
+| 上游源码 | 当前固件 `r20571-ab766cbcb0` | 构建 pin `740103d655bcee6da7bc3b49b1cfdfdee4cd5bb6`（2026-09-11）；前次已验证的 `ab766cb`（2024-06-13）保留为回滚目标 | ⚠️ 源码已升级，见 §9 |
 | 版本号 | — | `r0-ab766cb`（三档一致） | ✅ |
 
 ## 2. 分区适配（GPT 与尺寸门禁）
@@ -105,3 +105,18 @@
 6. **记录证据**：`docs/DSH_PROGRESS.md` 追加 source SHA、feeds SHAs、OpenClash SHA、镜像 SHA256、尺寸、CI 链接。
 7. **旧镜像保留为回滚目标**：已验证的 `ab766cb` 三档产物 SHA256 见 §1/§2，任何时候新构建出问题都不影响它们。
 8. feeds（luci/packages/…）与 OpenClash 跟随分支头，**追新即漂移**；如需锁定，把 `feeds-shas.txt` 里已验证的 SHA 写成 `src-git …;<sha>` 形式固定，并重新走一遍上面的流程验证。
+
+## 9. 源码版本升级记录（2026-11-13）
+
+| 项 | 升级前 | 升级后 |
+| --- | --- | --- |
+| 源码 commit | `ab766cb`（2024-06-13） | `740103d`（2026-09-11） |
+| 差距 | — | 86 个提交 / 300 个文件 |
+| 目标设备 | `cmcc_rax3000m-emmc` | **不变** |
+| eMMC 频率 | 26 MHz | **不变（26 MHz）** |
+| board_name | `cmcc,rax3000m-emmc` | **不变** |
+| 内核 | 5.4 | **不变（5.4）** |
+
+**为什么不用上游新增的原生 `cmcc_xr30-emmc` 目标**：该目标确实已内置白灯 GPIO34，但其 DTS 使用 `max-frequency = <52000000>`（52 MHz）且 `compatible = "cmcc,xr30-emmc"`。作者 README 明确警告 52 MHz 在体质较差的闪存上会出现 I/O 报错甚至无法启动；本机一直在 26 MHz 运行。采用它还会把 board_name 改成与设备实际报告值不同的名字。因此**只升级源码，不换目标**，白灯仍由 `patch_led.py` 处理。
+
+**回滚**：`ab766cb` 三档已验证产物（SHA256 见 §1、§2）仍在，可随时作为回滚目标重新构建或直接使用。回滚时把 workflow 的 `source_ref` 改回 `ab766cbcb0cc22a64e8bf816443bf3e1a56614bd` 即可。
