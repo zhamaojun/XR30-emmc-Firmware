@@ -132,7 +132,7 @@ jobs:
           done
           grep -q '192\.168\.1\.1' "$CFG" || { echo 'ERROR: default LAN IP anchor not found; upstream drifted, manual audit required'; exit 1; }
           sed -i "s/192\.168\.1\.1/${LAN_IP}/g" "$CFG"
-          grep -q "ipaddr='${LAN_IP}'" "$CFG" || { echo 'ERROR: LAN IP patch verification failed'; exit 1; }
+          grep -q "ipad=.*${LAN_IP}" "$CFG" || { echo 'ERROR: LAN IP patch verification failed'; exit 1; }
           if grep -q '192\.168\.1\.1' "$CFG"; then echo 'ERROR: old LAN IP still present'; exit 1; fi
           echo "Default LAN IP set to ${LAN_IP}"
           echo "${LAN_IP}" > lan-ip.txt
