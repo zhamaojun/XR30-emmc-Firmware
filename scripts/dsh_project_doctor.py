@@ -25,6 +25,8 @@ required = [
     # Reversible network tuning.
     'packages/xr30-network-tuning/Makefile',
     'packages/xr30-network-tuning/files/etc/uci-defaults/99-xr30-network-tuning',
+    'packages/xr30-network-tuning/files/etc/uci-defaults/98-xr30-cpufreq-enable',
+    'packages/xr30-network-tuning/files/etc/init.d/xr30-cpufreq',
 ]
 for name in required:
     if not (root / name).is_file():

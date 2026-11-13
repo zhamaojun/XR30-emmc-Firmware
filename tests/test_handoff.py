@@ -96,6 +96,23 @@ class OverlayUnitTests(unittest.TestCase):
         self.assertIn('CONFIG_PACKAGE_xr30-network-tuning=y', full)
         self.assertNotIn('CONFIG_PACKAGE_xr30-network-tuning=y', baseline)
 
+    def test_tuning_package_governor_script(self):
+        initd = (ROOT / 'packages/xr30-network-tuning/files/etc/init.d/xr30-cpufreq')
+        enabler = (ROOT / 'packages/xr30-network-tuning/files/etc/uci-defaults/98-xr30-cpufreq-enable')
+        self.assertTrue(initd.is_file())
+        self.assertTrue(enabler.is_file())
+        text = initd.read_text()
+        # schedutil is the conservative choice; performance would pin both
+        # cores at max frequency and raise thermals for no benefit at idle.
+        self.assertIn('GOVERNOR="schedutil"', text)
+        self.assertIn('scaling_available_governors', text,
+                      'must verify the governor is available before writing')
+        self.assertIn('scaling_governor', text)
+        self.assertIn('START=', text, 'must be an rc.common boot script')
+        # The governor must be applied at every boot, so a bare uci-defaults
+        # one-shot is not enough; the uci-defaults file only enables the init.
+        self.assertIn('/etc/init.d/xr30-cpufreq enable', enabler.read_text())
+
     def test_retarget_drops_legacy_device_and_sets_profile(self):
         c = load_configure()
         base = (ROOT / 'configs/rax3000z-emmc.config').read_text()

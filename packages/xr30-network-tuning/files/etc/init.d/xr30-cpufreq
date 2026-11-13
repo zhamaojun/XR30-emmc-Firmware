@@ -1,0 +1,37 @@
+#!/bin/sh /etc/rc.common
+# Set the cpufreq governor to schedutil on boot.
+#
+# The MT7981 kernel is built with CONFIG_CPU_FREQ_DEFAULT_GOV_USERSPACE=y and
+# no userspace daemon, so without this the CPUs stay at whatever frequency
+# they were left at (typically the minimum), directly capping HNAT and
+# userspace-proxy throughput. schedutil is the conservative choice: it ramps
+# up under load and idles back down, matching a router's bursty traffic.
+#
+# Not done via uci-defaults on purpose: /sys is re-created on every boot, so
+# a one-shot script would only affect the first boot. This init script runs
+# at every boot. Revert: /etc/init.d/xr30-cpufreq disable && reboot.
+
+START=19
+STOP=90
+
+GOVERNOR="schedutil"
+
+start() {
+	local policy gov
+	for policy in /sys/devices/system/cpu/cpufreq/policy*; do
+		[ -d "$policy" ] || continue
+		[ -w "$policy/scaling_governor" ] || continue
+		grep -qw "$GOVERNOR" "$policy/scaling_available_governors" 2>/dev/null || {
+			logger -t xr30-cpufreq "$policy: governor $GOVERNOR not available, leaving default"
+			continue
+		}
+		echo "$GOVERNOR" > "$policy/scaling_governor"
+		gov="$(cat "$policy/scaling_governor" 2>/dev/null)"
+		logger -t xr30-cpufreq "$policy: governor=$gov"
+	done
+}
+
+stop() {
+	# No-op on purpose: do not fight whatever the operator set at runtime.
+	:
+}

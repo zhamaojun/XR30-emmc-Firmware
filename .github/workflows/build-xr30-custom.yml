@@ -156,9 +156,14 @@ jobs:
           # Reversible tuning package must be present and documented.
           test -s openwrt/package/xr30-network-tuning/Makefile
           test -s openwrt/package/xr30-network-tuning/files/etc/uci-defaults/99-xr30-network-tuning
+          test -s openwrt/package/xr30-network-tuning/files/etc/init.d/xr30-cpufreq
+          test -s openwrt/package/xr30-network-tuning/files/etc/uci-defaults/98-xr30-cpufreq-enable
           if grep -qE 'flow_offloading|tcp_fastopen' openwrt/package/xr30-network-tuning/files/etc/uci-defaults/99-xr30-network-tuning; then
             echo 'ERROR: tuning package must not touch flow-offload or TFO'; exit 1
           fi
+          grep -q 'scaling_governor' openwrt/package/xr30-network-tuning/files/etc/init.d/xr30-cpufreq
+          # schedutil must be the governor; performance would pin both cores at max.
+          grep -q 'GOVERNOR="schedutil"' openwrt/package/xr30-network-tuning/files/etc/init.d/xr30-cpufreq
           if [ "$PROFILE" = 'full' ]; then
             test -s openwrt/package/luci-app-adguardhome/Makefile
             test -d openwrt/package/luci-app-adguardhome/luasrc
