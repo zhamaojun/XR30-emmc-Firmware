@@ -27,7 +27,7 @@ if '#include "mt7981-cmcc-rax3000m-xr30.dtsi"' in src:
 \t\t\tgpios = <&pio 12 GPIO_ACTIVE_LOW>;
 \t\t};"""
     after = """\t\twhite_led: white {
-\t\t\tlabel = \"rax3000z:white\";
+\t\t\tlabel = \"rax3000m:white\";
 \t\t\tgpios = <&pio 34 GPIO_ACTIVE_LOW>;
 \t\t};"""
     substitutions = {

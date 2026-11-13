@@ -25,6 +25,7 @@ Agent: DSH (baseline CI verified 2026-11-13)
 ## Build evidence — baseline (verified)
 - Source SHA: `ab766cbcb0cc22a64e8bf816443bf3e1a56614bd`
 - Package feeds SHAs (from `feeds.buildinfo`): `packages e09f3c7d1`, `luci 5829eabba5`, `routing a9e4310`, `telephony 920fbc5` (full 40-char SHAs were not captured by this run; the workflow now records them)
+- Evidence gap (2026-11-13 audit): this run predates the size-gate/feed-recording workflow (`91a3772`), so its artifact lacks `feeds-shas.txt` and its `image-inventory.txt` has no `RESULT: PASS` line; the p4/p5 sizes below were verified locally with the current `scripts/verify_images.py`. Owner decided not to re-run baseline just for evidence.
 - OpenClash SHA: n/a for baseline
 - iStore SHA: n/a for baseline
 - Profile: baseline
@@ -69,3 +70,10 @@ Agent: DSH (baseline CI verified 2026-11-13)
 - Verified selected: `luci-app-store`, `adguardhome`, `tailscale`, `luci-app-sqm`, `kmod-sched-cake`, `luci-app-openclash`, `docker`
 - Version: `r0-ab766cb`
 - Router flash: **NOT authorized**
+
+## 2026-11-13 read-only full audit (no repo/device mutation during audit)
+- Scope: git state, doctor + 9 unit tests, bash -n on all shell scripts, Python AST/import checks, artifact audit (SHA256 recompute, tar size gate, device ID, source/feed SHAs, manifest package presence/absence, kmod ABI), upstream DTS reconciliation at `ab766cb`, secret scan.
+- All green except the fixed items below; full traffic-light table in `docs/PREFLASH_REPORT.md` §7.
+- Fixes applied on `feat/audit-fixes-preflash-report`: `main` now tracks `origin/main` (was `upstream/main`); `patch_led.py` new-layout LED label unified to `rax3000m:white`; `docs/DSH_TASKS.md` checkboxes updated to verified state; baseline evidence gap documented; Phase 4 `docs/PREFLASH_REPORT.md` created.
+- kmod note: `kmod-gpio-button-hotplug 5.4.255-3` and `kmod-conninfra 5.4.255+bbf588-1` are upstream package-release tags, NOT ABI drift (all kmods are kernel 5.4.255 builds).
+- Still open (documented, not fixed): feeds/OpenClash follow branch heads (rebuilds drift; verified SHAs recorded but not pinned); author's legacy workflows keep `permissions: write-all` (manual dispatch only); baseline evidence gap (rerun declined by owner).
