@@ -1,0 +1,20 @@
+{
+	"luci-app-tailscale-lite": {
+		"description": "Grant access to Tailscale status and service control",
+		"read": {
+			"file": {
+				"/etc/init.d/tailscale": [ "exec" ],
+				"/usr/sbin/tailscale": [ "exec" ],
+				"/usr/sbin/tailscaled": [ "exec" ],
+				"/etc/tailscale/*": [ "read" ]
+			},
+			"uci": [ "tailscale" ]
+		},
+		"write": {
+			"file": {
+				"/etc/init.d/tailscale": [ "exec" ]
+			},
+			"uci": [ "tailscale" ]
+		}
+	}
+}

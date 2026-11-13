@@ -47,7 +47,10 @@
 | dnsmasq-full 2.85-1 | 全部 | 内置 | 53 端口；与 SmartDNS 的上下游关系 |
 | SmartDNS 1.2023.42 | perf/full | 内置 | 默认端口（通常 5335/6053）不与 53 冲突 |
 | OpenClash 0.48.002 | perf/full | LuCI 内置；**core 内核不打包** | 首次启动联网下载内核；未下载前不接管流量；默认不自动启用 |
-| AdGuard Home 0.107.36-1 | full | 内置 | 初始化端口 3000、运行端口需配置后再启用，避免与 dnsmasq 抢 53 |
+| AdGuard Home 0.107.36-1 | full | 内置二进制 + `luci-app-adguardhome` 界面（服务 → AdGuard Home） | 初始化端口 3000、运行端口需配置后再启用，避免与 dnsmasq 抢 53 |
+| Tailscale 1.32.3-1 | full | 内置 + 本仓库自写 `luci-app-tailscale-lite` 界面（服务 → Tailscale） | 上游 luci-app-tailscale 是 JS view，需 22.03+，故本项目自带 Lua/CBI 页；默认不自启 |
+| irqbalance | perf/full | 内置 | 双核中断平衡，Docker/OpenClash 高负载时降低单核软中断堆积 |
+| 运维工具 | full | `luci-app-statistics`、`luci-app-vnstat2`、`luci-app-watchcat`、`luci-app-wol` | 均默认不启用；watchcat 会主动重启网络，启用前先确认策略 |
 | WireGuard | perf/full | `kmod-wireguard 5.4.255-1` | 未配置不监听 |
 | Tailscale 1.32.3-1 | full | 内置 | 未登录不启动连接 |
 | Docker/Dockerman v0.5.13 | perf/full | 内置 | dockerd 数据目录改指 p6；防火墙 docker0 规则 |
@@ -79,6 +82,7 @@
 | 硬件 DTS（LED/26MHz/校准） | 🟢 | 与上游 pin 逐行核对一致 |
 | 包集完整性/禁选泄漏 | 🟢 | 三档 manifest 逐项核对；作者遗留代理包零泄漏 |
 | kmod ABI | 🟢 | 全部 5.4.255 系 |
+| LuCI 兼容性（新增） | 🟢 | AGH 用 `cbi`/`form`（Lua，21.02 可用）；Tailscale 使用本仓库自写 Lua 页，构建时禁止出现 `.js`；上游 JS-view 包已明确排除 |
 | 产物完整性 | 🟢 | SHA256 复算一致；CI sha256sums 7/7 |
 | 安全边界 | 🟢 | 仓库无密钥；脚本无上机写操作；只推 fork |
 | baseline 证据完整性 | 🟡 | feeds 仅短 SHA、inventory 无 RESULT 行（构建早于门禁改进）；已记录，用户同意暂不补跑 |

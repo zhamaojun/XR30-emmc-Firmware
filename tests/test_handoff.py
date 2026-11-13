@@ -1,6 +1,7 @@
 """Offline unit checks; run: python -m unittest discover -s tests -v."""
 from pathlib import Path
 import importlib.util
+import re
 import subprocess
 import sys
 import unittest
@@ -69,6 +70,58 @@ class OverlayUnitTests(unittest.TestCase):
             r=subprocess.run([sys.executable,str(ROOT/'scripts/patch_led.py'),str(p),str(fixture)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
             self.assertNotEqual(r.returncode,0)
             self.assertIn('unknown DTSI layout',r.stderr + r.stdout)
+
+    def test_irqbalance_and_ops_packages_follow_profile_tiers(self):
+        c = load_configure()
+        base = (ROOT / 'configs/rax3000z-emmc.config').read_text()
+        baseline = c.make_config(base, 'baseline')
+        perf = c.make_config(base, 'performance')
+        full = c.make_config(base, 'full')
+        # irqbalance rides with performance/full, never baseline.
+        self.assertIn('CONFIG_PACKAGE_irqbalance=y', perf)
+        self.assertIn('CONFIG_PACKAGE_irqbalance=y', full)
+        self.assertNotIn('CONFIG_PACKAGE_irqbalance=y', baseline)
+        # Tailscale/AdGuard LuCI and the ops tools are full-only.
+        for pkg in ('luci-app-tailscale-lite', 'luci-app-adguardhome',
+                    'luci-app-statistics', 'luci-app-vnstat2',
+                    'luci-app-watchcat', 'luci-app-wol'):
+            self.assertIn(f'CONFIG_PACKAGE_{pkg}=y', full,
+                          f'{pkg} must be selected in full')
+            self.assertNotIn(f'CONFIG_PACKAGE_{pkg}=y', perf,
+                             f'{pkg} must not leak into performance')
+
+    def test_in_tree_tailscale_page_is_lua_only(self):
+        d = ROOT / 'packages/luci-app-tailscale-lite'
+        self.assertTrue((d / 'Makefile').is_file())
+        self.assertTrue((d / 'luasrc/controller/tailscale.lua').is_file())
+        self.assertTrue((d / 'luasrc/model/cbi/tailscale/status.lua').is_file())
+        # Upstream luci-app-tailscale ships JS views that the 21.02 Lua LuCI
+        # cannot render; any .js here would regress to a blank page.
+        self.assertEqual([p.name for p in d.rglob('*.js')], [],
+                         'luci-app-tailscale-lite must stay Lua-only')
+        model = (d / 'luasrc/model/cbi/tailscale/status.lua').read_text()
+        self.assertIn('require "luci.jsonc"', model)
+        self.assertIn('require "nixio.fs"', model)
+        controller = (d / 'luasrc/controller/tailscale.lua').read_text()
+        self.assertIn('"admin", "services", "tailscale"', controller)
+        self.assertIn('nixio.fs.access("/usr/sbin/tailscale")', controller,
+                      'controller must fail closed when tailscale is absent')
+
+    def test_third_party_source_is_pinned_not_a_branch_head(self):
+        text = (ROOT / 'scripts/custom_prepare.sh').read_text()
+        self.assertIsNotNone(re.search(r"KENZOK8_SHA='[0-9a-f]{40}'", text),
+                             'kenzok8 feed must be pinned by full SHA')
+        self.assertIn('codeload.github.com', text,
+                      'pinned sources should be fetched as a commit tarball')
+        # The AGH LuCI must reuse our compiled binary, not bundle a second one.
+        self.assertIn('INCLUDE_binary', text)
+
+    def test_workflow_verifies_lua_compatibility(self):
+        y = (ROOT / '.github/workflows/build-xr30-custom.yml').read_text()
+        self.assertIn('Verify third-party and in-tree package sources', y)
+        self.assertIn('luci-app-tailscale-lite must stay Lua-only', y)
+        self.assertIn('luci-app-adguardhome menu became JS-view', y)
+        self.assertIn('kenzok8-source-sha.txt', y)
 
 if __name__ == '__main__':
     unittest.main()

@@ -137,6 +137,35 @@ jobs:
           echo "Default LAN IP set to ${LAN_IP}"
           echo "${LAN_IP}" > lan-ip.txt
 
+      - name: Verify third-party and in-tree package sources
+        run: |
+          set -euo pipefail
+          # In-tree Lua/CBI Tailscale page must exist and stay Lua-only:
+          # this firmware ships the Lua-based LuCI from 21.02, which cannot
+          # render the JS views used by upstream luci-app-tailscale.
+          test -s openwrt/package/luci-app-tailscale-lite/Makefile
+          test -s openwrt/package/luci-app-tailscale-lite/luasrc/controller/tailscale.lua
+          test -s openwrt/package/luci-app-tailscale-lite/luasrc/model/cbi/tailscale/status.lua
+          if find openwrt/package/luci-app-tailscale-lite -name '*.js' | grep -q .; then
+            echo 'ERROR: luci-app-tailscale-lite must stay Lua-only on 21.02'; exit 1
+          fi
+          grep -q 'require "luci.jsonc"' openwrt/package/luci-app-tailscale-lite/luasrc/model/cbi/tailscale/status.lua
+          if [ "$PROFILE" = 'full' ]; then
+            test -s openwrt/package/luci-app-adguardhome/Makefile
+            test -d openwrt/package/luci-app-adguardhome/luasrc
+            # Its menu must stay CBI/form based. A switch to "view" (JS) would
+            # mean the package moved to 22.03+ and would render blank here.
+            test -s openwrt/package/luci-app-adguardhome/root/usr/share/luci/menu.d/luci-app-adguardhome.json
+            if grep -q '"type": *"view"' openwrt/package/luci-app-adguardhome/root/usr/share/luci/menu.d/luci-app-adguardhome.json; then
+              echo 'ERROR: luci-app-adguardhome menu became JS-view; incompatible with 21.02'; exit 1
+            fi
+            grep -q '"type": *"cbi"' openwrt/package/luci-app-adguardhome/root/usr/share/luci/menu.d/luci-app-adguardhome.json
+            # The pinned commit must publish the INCLUDE_binary switch we rely
+            # on to avoid shipping a second AdGuard Home binary.
+            grep -q 'INCLUDE_binary' openwrt/package/luci-app-adguardhome/Makefile
+          fi
+          echo 'OK: package sources verified for the 21.02 Lua LuCI'
+
       - name: Generate profile config
         run: |
           python3 scripts/configure.py \
@@ -179,3 +208,4 @@ jobs:
             openwrt/openclash-source-sha.txt
             image-inventory.txt
             lan-ip.txt
+            openwrt/kenzok8-source-sha.txt

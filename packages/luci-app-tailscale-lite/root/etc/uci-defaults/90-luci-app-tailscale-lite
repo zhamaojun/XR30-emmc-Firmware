@@ -1,0 +1,20 @@
+#!/bin/sh
+# luci-app-tailscale-lite: seed a minimal /etc/config/tailscale.
+#
+# feeds/packages/net/tailscale ships an init script that reads
+# /etc/config/tailscale but no config file of its own. Without this file the
+# LuCI form has no section to attach to, so it would render empty and refuse
+# to save. Only create it when absent; never overwrite operator edits.
+[ -f /etc/config/tailscale ] && exit 0
+
+uci -q batch <<-EOF
+	set tailscale.settings='settings'
+	set tailscale.settings.enabled='0'
+	set tailscale.settings.port='41641'
+	set tailscale.settings.state_file='/etc/tailscale/tailscaled.state'
+	set tailscale.settings.log_stdout='1'
+	set tailscale.settings.log_stderr='1'
+EOF
+uci -q commit tailscale
+
+exit 0

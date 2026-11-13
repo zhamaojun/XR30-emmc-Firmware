@@ -23,6 +23,20 @@ Agent: DSH (baseline CI verified 2026-11-13)
 | 2026-11-13 07:25 | main `03cb0d4` | Full run #4 succeeded; artifact `xr30-full-4` downloaded and audited | https://github.com/zhamaojun/Actions-rax3000z-emmc/actions/runs/43314936466 | PASS: kernel 3,614,398 B ≤ 32 MiB, root 102,905,856 B ≤ 2 GiB; sysupgrade SHA256 `3e1ce2ec…`; manifest 493 packages; includes luci-app-store, adguardhome, tailscale, sqm/CAKE | All three profiles verified; flashing still NOT authorized |
 | 2026-11-13 12:00 | `feat/independent-maintenance` | Independence from stopped upstream: removed `upstream` git remote; README/AGENTS/HANDOFF wording now states independent maintenance (author credited as history); added "future source re-pin" procedure to `docs/PREFLASH_REPORT.md` §8 | — | Local docs + remote config only; no build inputs changed | Owner-side: leave fork network + optional repo rename on GitHub |
 | 2026-11-13 14:30 | `feat/custom-lan-ip` | Owner requested default LAN IP 192.168.2.1; added workflow input `lan_ip` (default `192.168.2.1`) with dotted-quad validation + fail-closed sed patch of `config_generate`; repo renamed to `XR30-emmc-Firmware` and fork network detached (owner, GitHub UI) | — | doctor PASS; 9 unit tests OK | Dispatch full rebuild with lan_ip=192.168.2.1 |
+| 2026-11-13 16:15 | main `791d641` | Fixed LAN IP verification pattern (`ipad=${ipaddr:-"..."}` not `ipaddr='...'`); CI run 43382017385 succeeded; artifact `xr30-full-6` verified: SHA256 `992f99da…`, `lan-ip.txt` = 192.168.2.1 | https://github.com/zhamaojun/XR30-emmc-Firmware/actions/runs/43382017385 | PASS kernel 3,614,398 B / root 102,905,856 B; owner flashed via U-Boot, booted to `r0-ab766cb` | Post-flash menu review |
+| 2026-11-13 18:40 | `feat/tailscale-agh-menus` | Post-flash UI gap work. Verified DiskMan deps were already complete (`parted`/`blkid`/`smartmontools` present) — earlier "smartctl missing" report was a package-name mistake. Added: `irqbalance` (performance+full), `luci-app-adguardhome` (kenzok8 pinned `8099fdd5…`, Lua/CBI, 21.02-compatible), in-tree `packages/luci-app-tailscale-lite` (Lua/CBI, because every upstream luci-app-tailscale is JS-view and needs 22.03+), plus `luci-app-statistics`/`vnstat2`/`watchcat`/`wol` | — | doctor PASS; 19 unit tests OK (incl. Lua structure check) | Rebuild full, reflash |
+
+## 2026-11-13 LuCI compatibility finding (why Tailscale needed an in-tree package)
+- Upstream `luci-app-tailscale` (asvow v1.1.1–v1.2.6, gw826943555, whzhni1) all ship
+  `htdocs/luci-static/resources/view/tailscale/*.js` using `'require view'; return view.extend({...})`.
+  That is LuCI 22.03+ client-side rendering; the Lua-based LuCI in 21.02 cannot execute it,
+  so the menu entry would appear but the page would render blank.
+- asvow's page also defaults to `fw_mode = nftables`, while this firmware uses iptables.
+- `luci-app-adguardhome` (kenzok8) is genuinely Lua/CBI (`"type": "cbi"` in its menu.d) and
+  its README states 21.02 compatibility, so it is safe here. It must not bundle a second
+  AdGuard Home binary → `INCLUDE_binary` stays disabled; the workflow greps for that switch.
+- Consequence: the firmware now ships its own `luci-app-tailscale-lite` Lua page, and the
+  build fails closed if any `.js` appears in it or if the AGH menu turns into `"type": "view"`.
 
 ## Build evidence — baseline (verified)
 - Source SHA: `ab766cbcb0cc22a64e8bf816443bf3e1a56614bd`

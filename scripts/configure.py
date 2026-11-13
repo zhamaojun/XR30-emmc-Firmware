@@ -25,10 +25,22 @@ PERFORMANCE = {
     "smartdns", "luci-app-smartdns",
     "wireguard-tools", "kmod-wireguard", "luci-app-wireguard",
     "docker", "dockerd", "luci-app-dockerman", "luci-lib-docker",
+    # Spread NIC interrupts across both A53 cores; Docker and OpenClash on a
+    # 2-core SoC otherwise pin most softirq work to CPU0.
+    "irqbalance",
 }
 FULL = {
     "adguardhome", "tailscale", "luci-app-store",
     "luci-app-sqm", "sqm-scripts", "kmod-sched-cake",
+    # LuCI for the AdGuard Home binary above (kenzok8, pinned, Lua/CBI).
+    # It must NOT bundle a second adguardhome binary; see custom_prepare.sh.
+    "luci-app-adguardhome",
+    # In-tree Lua/CBI page; the upstream luci-app-tailscale is JS-view based
+    # and cannot render on the Lua LuCI shipped with 21.02.
+    "luci-app-tailscale-lite",
+    # Operational visibility and recovery helpers.
+    "luci-app-statistics", "luci-app-vnstat2",
+    "luci-app-watchcat", "luci-app-wol",
 }
 # Remove overlapping/obsolete services from the author's very large baseline.
 REMOVE = {
