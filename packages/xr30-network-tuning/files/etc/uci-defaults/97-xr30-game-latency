@@ -1,0 +1,65 @@
+#!/bin/sh
+# Game-latency defaults for the XR30: SQM+CAKE on the WAN, HNAT off.
+#
+# Why: the owner games from a wired client on a ~120/80 Mbit line. Raw
+# throughput is not the constraint; jitter under load is. CAKE keeps the
+# standing queue short, so a download elsewhere does not spike game ping.
+#
+# HNAT must be off: it shortcuts packets past the qdisc, which would make
+# CAKE a no-op. At 120 Mbit the software path costs little CPU.
+#
+# The bandwidth numbers are 92% of the measured 120/80 Mbit line. SQM must
+# shape slightly BELOW the real rate or the bottleneck queue stays full and
+# the shaping does nothing. Adjust in LuCI -> Network -> SQM if the line
+# changes; these are starting values, not a permanent contract.
+
+# Only act when SQM is actually installed (baseline profile has no SQM).
+[ -x /etc/init.d/sqm ] || exit 0
+
+# Pick the WAN device: follow the logical wan interface to a real netdev.
+WAN_DEV="$(uci -q get network.wan.device)"
+[ -n "$WAN_DEV" ] || WAN_DEV="eth1"
+
+# One SQM queue on the WAN device. piece_of_cake.qos shapes both directions
+# with cake and no diffserv split; nat dual-* keeps per-host fairness so one
+# busy host cannot starve the game client behind NAT.
+uci -q batch <<EOF
+	delete sqm.wan
+	set sqm.wan=queue
+	set sqm.wan.enabled='1'
+	set sqm.wan.interface='$WAN_DEV'
+	set sqm.wan.download='110400'
+	set sqm.wan.upload='73600'
+	set sqm.wan.qdisc='cake'
+	set sqm.wan.script='piece_of_cake.qos'
+	set sqm.wan.linklayer='ethernet'
+	set sqm.wan.overhead='0'
+	set sqm.wan.iqdisc_opts='nat dual-dsthost'
+	set sqm.wan.eqdisc_opts='nat dual-srchost'
+	set sqm.wan.verbosity='2'
+	set sqm.wan.debug_logging='0'
+	commit sqm
+EOF
+
+# HNAT off so the qdisc is actually traversed. TurboACC keeps running for
+# its other toggles; only the fastpath is switched to none.
+uci -q set turboacc.config.fastpath='none'
+# TurboACC rewrites the congestion control at boot from its own setting, so
+# BBR has to be set here as well or the sysctl in 99-xr30-network-tuning gets
+# overwritten back to cubic on every restart.
+uci -q set turboacc.config.tcpcca='bbr'
+uci -q commit turboacc
+
+# BBR lives in a module on this kernel; make it load on every boot.
+mkdir -p /etc/modules.d
+echo tcp_bbr > /etc/modules.d/30-tcp_bbr
+
+/etc/init.d/sqm enable
+/etc/init.d/turboacc restart 2>/dev/null
+/etc/init.d/sqm restart 2>/dev/null
+
+sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1
+
+logger -t xr30-tuning "SQM/CAKE enabled on $WAN_DEV (110400/73600 kbit), HNAT off, BBR on"
+
+exit 0

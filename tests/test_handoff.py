@@ -79,10 +79,17 @@ class OverlayUnitTests(unittest.TestCase):
         baseline = c.make_config(base, 'baseline')
         perf = c.make_config(base, 'performance')
         full = c.make_config(base, 'full')
-        # irqbalance rides with performance/full, never baseline.
-        self.assertIn('CONFIG_PACKAGE_irqbalance=y', perf)
-        self.assertIn('CONFIG_PACKAGE_irqbalance=y', full)
-        self.assertNotIn('CONFIG_PACKAGE_irqbalance=y', baseline)
+        # irqbalance was measured ineffective on this board (20s after start
+        # the per-CPU counters were unchanged) and is removed everywhere.
+        for name, cfg in (('baseline', baseline), ('performance', perf), ('full', full)):
+            self.assertNotIn('CONFIG_PACKAGE_irqbalance=y', cfg,
+                             f'irqbalance must not be selected in {name}')
+        # Docker removed: br_netfilter forces bridged traffic through
+        # iptables and conflicts with the CAKE data path.
+        for pkg in ('docker', 'dockerd', 'luci-app-dockerman', 'luci-lib-docker'):
+            for name, cfg in (('baseline', baseline), ('performance', perf), ('full', full)):
+                self.assertNotIn(f'CONFIG_PACKAGE_{pkg}=y', cfg,
+                                 f'{pkg} must not be selected in {name}')
         # Tailscale/AdGuard LuCI and the ops tools are full-only.
         for pkg in ('luci-app-tailscale-lite', 'luci-app-adguardhome',
                     'luci-app-statistics', 'luci-app-vnstat2',
@@ -91,27 +98,51 @@ class OverlayUnitTests(unittest.TestCase):
                           f'{pkg} must be selected in full')
             self.assertNotIn(f'CONFIG_PACKAGE_{pkg}=y', perf,
                              f'{pkg} must not leak into performance')
-        # Tuning rides with performance/full, never baseline.
-        self.assertIn('CONFIG_PACKAGE_xr30-network-tuning=y', perf)
-        self.assertIn('CONFIG_PACKAGE_xr30-network-tuning=y', full)
-        self.assertNotIn('CONFIG_PACKAGE_xr30-network-tuning=y', baseline)
+        # Tuning and SQM ride with performance/full, never baseline.
+        for pkg in ('xr30-network-tuning', 'luci-app-sqm', 'sqm-scripts',
+                    'kmod-sched-cake'):
+            self.assertIn(f'CONFIG_PACKAGE_{pkg}=y', perf, f'{pkg} in performance')
+            self.assertIn(f'CONFIG_PACKAGE_{pkg}=y', full, f'{pkg} in full')
+            self.assertNotIn(f'CONFIG_PACKAGE_{pkg}=y', baseline, f'{pkg} not in baseline')
 
-    def test_tuning_package_governor_script(self):
-        initd = (ROOT / 'packages/xr30-network-tuning/files/etc/init.d/xr30-cpufreq')
-        enabler = (ROOT / 'packages/xr30-network-tuning/files/etc/uci-defaults/98-xr30-cpufreq-enable')
-        self.assertTrue(initd.is_file())
-        self.assertTrue(enabler.is_file())
-        text = initd.read_text()
-        # schedutil is the conservative choice; performance would pin both
-        # cores at max frequency and raise thermals for no benefit at idle.
-        self.assertIn('GOVERNOR="schedutil"', text)
-        self.assertIn('scaling_available_governors', text,
-                      'must verify the governor is available before writing')
-        self.assertIn('scaling_governor', text)
-        self.assertIn('START=', text, 'must be an rc.common boot script')
-        # The governor must be applied at every boot, so a bare uci-defaults
-        # one-shot is not enough; the uci-defaults file only enables the init.
-        self.assertIn('/etc/init.d/xr30-cpufreq enable', enabler.read_text())
+    def test_game_latency_defaults_are_cake_with_hant_off(self):
+        script = (ROOT / 'packages/xr30-network-tuning/files/etc/uci-defaults/'
+                          '97-xr30-game-latency')
+        self.assertTrue(script.is_file())
+        text = script.read_text()
+        # CAKE shapes both directions with per-host fairness behind NAT.
+        self.assertIn("set sqm.wan.qdisc='cake'", text)
+        self.assertIn("set sqm.wan.script='piece_of_cake.qos'", text)
+        self.assertIn('nat dual-dsthost', text)
+        self.assertIn('nat dual-srchost', text)
+        # Values must stay below the measured 120/80 Mbit line, otherwise the
+        # bottleneck queue stays full and shaping does nothing.
+        self.assertIn("set sqm.wan.download='110400'", text)
+        self.assertIn("set sqm.wan.upload='73600'", text)
+        # HNAT bypasses the qdisc, so it has to be off for CAKE to work.
+        self.assertIn("set turboacc.config.fastpath='none'", text)
+        # TurboACC rewrites congestion control at boot; BBR must be pinned
+        # there too or the sysctl setting is lost on every restart.
+        self.assertIn("set turboacc.config.tcpcca='bbr'", text)
+        # Baseline has no SQM package; the script must no-op there.
+        self.assertIn('/etc/init.d/sqm ] || exit 0', text)
+
+    def test_sysctl_script_avoids_unavailable_fq_qdisc(self):
+        script = (ROOT / 'packages/xr30-network-tuning/files/etc/uci-defaults/'
+                          '99-xr30-network-tuning')
+        text = script.read_text()
+        # sch_fq is not built into this kernel, so writing default_qdisc=fq
+        # would fail; the default is already fq_codel via an OpenWrt patch.
+        self.assertNotIn('net.core.default_qdisc = fq\n', text)
+        self.assertIn('net.ipv4.tcp_congestion_control = bbr', text)
+        self.assertIn('vm.swappiness = 10', text)
+        self.assertIn('net.ipv4.ip_local_port_range', text)
+        # Longer UDP timeouts keep game/accelerator NAT mappings alive.
+        self.assertIn('nf_conntrack_udp_timeout', text)
+        self.assertIn('nf_conntrack_udp_timeout_stream', text)
+        # Forbidden knobs must never appear as real settings.
+        for bad in ('flow_offloading', 'tcp_fastopen'):
+            self.assertNotRegex(text, rf'(?m)^\s*{bad}\s*=')
 
     def test_retarget_drops_legacy_device_and_sets_profile(self):
         c = load_configure()

@@ -22,11 +22,10 @@ required = [
     'packages/luci-app-tailscale-lite/luasrc/model/cbi/tailscale/status.lua',
     'packages/luci-app-tailscale-lite/root/usr/share/rpcd/acl.d/luci-app-tailscale-lite.json',
     'packages/luci-app-tailscale-lite/root/etc/uci-defaults/90-luci-app-tailscale-lite',
-    # Reversible network tuning.
+    # Reversible latency tuning (SQM/CAKE defaults + sysctl block).
     'packages/xr30-network-tuning/Makefile',
     'packages/xr30-network-tuning/files/etc/uci-defaults/99-xr30-network-tuning',
-    'packages/xr30-network-tuning/files/etc/uci-defaults/98-xr30-cpufreq-enable',
-    'packages/xr30-network-tuning/files/etc/init.d/xr30-cpufreq',
+    'packages/xr30-network-tuning/files/etc/uci-defaults/97-xr30-game-latency',
 ]
 for name in required:
     if not (root / name).is_file():

@@ -1,17 +1,25 @@
 #!/bin/sh
-# Conservative network tuning for MT7981 running a userspace proxy.
+# Kernel/network tuning for MT7981 running a userspace proxy and a wired
+# gaming client.
 #
 # Everything lands in a clearly marked block in /etc/sysctl.conf, so reverting
 # is: delete the block between the markers and reboot. uci-defaults only runs
 # once, so this will not duplicate on later boots.
 #
+# The qdisc/CAKE side lives in 97-xr30-game-latency, not here.
+#
 # Deliberately NOT done here, and why:
 #   * flow-offload rules  - must stay mutually exclusive with MTK HNAT
-#   * qdisc / CAKE setup  - SQM is an operator runtime choice, never auto-on
+#   * net.core.default_qdisc - sch_fq is NOT built into this kernel
+#                           (CONFIG_NET_SCH_FQ is not set), so writing "fq"
+#                           would fail. The kernel default is already
+#                           fq_codel via OpenWrt's 661-use_fq_codel_by_default
+#                           patch, which is what BBR wants anyway.
 #   * TCP Fast Open       - this 5.4 kernel is built without CONFIG_TCP_FASTOPEN
 #   * BBR for forwarding  - NAT-forwarded flows never use the local TCP stack,
-#                           so BBR cannot speed them up; it only helps
-#                           router-side downloads and Dockerman image pulls.
+#                           so BBR cannot speed them up. It DOES help the
+#                           proxy's own connections to remote nodes, which are
+#                           router-local TCP, and that is why it is enabled.
 
 MARK_BEGIN='# XR30-NETWORK-TUNING begin'
 MARK_END='# XR30-NETWORK-TUNING end'
@@ -36,6 +44,12 @@ net.ipv4.tcp_slow_start_after_idle = 0
 net.ipv4.tcp_mtu_probing = 1
 # Local TCP only; does not affect NAT forwarding.
 net.ipv4.tcp_congestion_control = bbr
+# Wider ephemeral range: proxy, games and downloads together would otherwise
+# exhaust the default range and stall new connections.
+net.ipv4.ip_local_port_range = 10240 65000
+# Do not page to the eMMC: a swap-in stall shows up as a latency spike in
+# game. 506 MB of swap stays available as a last resort, just rarely used.
+vm.swappiness = 10
 # XR30-NETWORK-TUNING end
 EOF
 fi
@@ -44,7 +58,7 @@ fi
 # this early in boot, and a failing sysctl line would abort the whole file.
 if [ -d /proc/sys/net/netfilter ]; then
 	if ! grep -qF 'nf_conntrack_max = 32768' /etc/sysctl.conf 2>/dev/null; then
-		sed -i "/^${MARK_END}$/i net.netfilter.nf_conntrack_max = 32768\nnet.netfilter.nf_conntrack_tcp_timeout_established = 600" /etc/sysctl.conf
+		sed -i "/^${MARK_END}$/i net.netfilter.nf_conntrack_max = 32768\nnet.netfilter.nf_conntrack_tcp_timeout_established = 600\nnet.netfilter.nf_conntrack_udp_timeout = 60\nnet.netfilter.nf_conntrack_udp_timeout_stream = 180" /etc/sysctl.conf
 	fi
 fi
 

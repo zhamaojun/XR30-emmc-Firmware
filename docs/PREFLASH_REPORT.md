@@ -49,14 +49,16 @@
 | OpenClash 0.48.002 | perf/full | LuCI 内置；**core 内核不打包** | 首次启动联网下载内核；未下载前不接管流量；默认不自动启用 |
 | AdGuard Home 0.107.36-1 | full | 内置二进制 + `luci-app-adguardhome` 界面（服务 → AdGuard Home） | 初始化端口 3000、运行端口需配置后再启用，避免与 dnsmasq 抢 53 |
 | Tailscale 1.32.3-1 | full | 内置 + 本仓库自写 `luci-app-tailscale-lite` 界面（服务 → Tailscale） | 上游 luci-app-tailscale 是 JS view，需 22.03+，故本项目自带 Lua/CBI 页；默认不自启 |
-| irqbalance | perf/full | 内置 | 双核中断平衡，Docker/OpenClash 高负载时降低单核软中断堆积 |
+| irqbalance | **已移除** | — | 实测无效：启动后 20 秒中断计数完全没变；且 WiFi 已在 CPU1、以太网已在 CPU0，本已是最优分配 |
 | 运维工具 | full | `luci-app-statistics`、`luci-app-vnstat2`、`luci-app-watchcat`、`luci-app-wol` | 均默认不启用；watchcat 会主动重启网络，启用前先确认策略 |
-| WireGuard | perf/full | `kmod-wireguard 5.4.255-1` | 未配置不监听 |
+| WireGuard | perf/full | `kmod-wireguard` | 未配置不监听 |
 | Tailscale 1.32.3-1 | full | 内置 | 未登录不启动连接 |
-| Docker/Dockerman v0.5.13 | perf/full | 内置 | dockerd 数据目录改指 p6；防火墙 docker0 规则 |
-| SQM/CAKE 1.5.1 | full | 内置，默认无配置不启动 | 与 HNAT 硬件加速二选一，不可同时期望生效 |
+| Docker/Dockerman | **已移除** | — | `br_netfilter` 会让桥接 LAN/WiFi 流量多过一遍 iptables，推高延迟并与 CAKE 数据路径冲突；机主不跑容器。需要时可从 CI 产物 `packages/` 装回 |
+| **SQM/CAKE** | perf/full | **默认启用**（开机 uci-defaults） | `piece_of_cake.qos` + `nat dual-dsthost/dual-srchost`（NAT 后按主机公平），下行 110400 / 上行 73600 kbit（实测 120/80 Mbit 的 92%）。**同时默认关闭 HNAT**（见下） |
+| **HNAT 硬件加速** | 全部 | 内置但**默认关闭**（`fastpath=none`） | HNAT 会绕过 qdisc，开着 CAKE 就完全失效。120 Mbit 线路软件转发开销很小，用低抖动换吞吐是刻意的取舍 |
+| 拥塞控制 | perf/full | 默认 **bbr** | 通过 `turboacc.config.tcpcca='bbr'` 固定，否则 TurboACC 每次重启会改回 cubic |
 | iStore 0.2.1-r1 | full | 内置 | 商店二进制不保证适配本 target，安装前三思 |
-| mtwifi-cfg / eQoS-MTK / HNAT | 全部 | 内置 | 无线校准来自 factory 分区，勿动 |
+| mtwifi-cfg / eQoS-MTK | 全部 | 内置 | 无线校准来自 factory 分区，勿动 |
 
 ## 5. 上机前只读检查（将来经授权后执行，现在不做）
 
@@ -105,6 +107,42 @@
 6. **记录证据**：`docs/DSH_PROGRESS.md` 追加 source SHA、feeds SHAs、OpenClash SHA、镜像 SHA256、尺寸、CI 链接。
 7. **旧镜像保留为回滚目标**：已验证的 `ab766cb` 三档产物 SHA256 见 §1/§2，任何时候新构建出问题都不影响它们。
 8. feeds（luci/packages/…）与 OpenClash 跟随分支头，**追新即漂移**；如需锁定，把 `feeds-shas.txt` 里已验证的 SHA 写成 `src-git …;<sha>` 形式固定，并重新走一遍上面的流程验证。
+
+## 2026-11-16 游戏低延迟改造（实测驱动）
+
+机主实测线路 **120 Mbit 下行 / 80 Mbit 上行**，游戏设备**全部有线**，常用 UU 远程与网游。
+基于上机只读体检的实测数据，本版做了以下定向改造：
+
+| 体检发现 | 证据 | 处置 |
+| --- | --- | --- |
+| BBR 未生效 | `tcp_congestion_control = cubic` | TurboACC 的 `tcpcca` 每次开机把拥塞控制写回 cubic；改为 `tcpcca='bbr'` 并在 uci-defaults 中固定 |
+| irqbalance 无效 | 启动后 20 秒，IRQ 7/76/77 的 CPU0/CPU1 计数**完全没变** | 从固件移除 |
+| 中断分配已最优 | WiFi(IRQ7) 全在 CPU1、以太网(IRQ76/77) 全在 CPU0 | 无需干预 |
+| cpufreq 脚本空转 | 输出 `/sys/.../policy*: governor=`（通配符未展开）→ 无 policy 节点 | 删除 `xr30-cpufreq` |
+| Docker 干扰桥接 | `dockerd`/`containerd` 常驻；Docker 会加载 `br_netfilter` | 从固件移除 |
+| `fq` 不可用 | `CONFIG_NET_SCH_FQ is not set` | **不设** `default_qdisc=fq`；默认已是 `fq_codel`（上游 `661-use_fq_codel_by_default.patch`） |
+
+**关键取舍**：HNAT 与 CAKE 互斥（HNAT 绕过 qdisc）。在 120 Mbit 线路上 HNAT 的收益很小，
+而游戏需要的是低抖动，因此**默认关闭 HNAT、启用 SQM+CAKE**。
+
+**上机验收命令**：
+
+```sh
+sysctl net.ipv4.tcp_congestion_control        # 期望 bbr
+uci get turboacc.config.tcpcca                # 期望 bbr
+uci get turboacc.config.fastpath              # 期望 none
+tc qdisc show dev eth1 | grep cake            # 期望存在 cake
+lsmod | grep -c br_netfilter                  # 期望 0（Docker 已移除）
+sysctl vm.swappiness                          # 期望 10
+```
+
+**回退到 HNAT 满速**：
+
+```sh
+/etc/init.d/sqm stop && /etc/init.d/sqm disable
+uci set turboacc.config.fastpath='mediatek_hnat'
+uci commit turboacc && /etc/init.d/turboacc restart
+```
 
 ## 9. 源码版本升级记录（2026-11-13）
 

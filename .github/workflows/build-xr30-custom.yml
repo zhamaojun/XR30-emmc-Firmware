@@ -153,17 +153,26 @@ jobs:
             echo 'ERROR: luci-app-tailscale-lite must stay Lua-only on 21.02'; exit 1
           fi
           grep -q 'require "luci.jsonc"' openwrt/package/luci-app-tailscale-lite/luasrc/model/cbi/tailscale/status.lua
-          # Reversible tuning package must be present and documented.
+          # Reversible latency tuning package must be present and documented.
           test -s openwrt/package/xr30-network-tuning/Makefile
           test -s openwrt/package/xr30-network-tuning/files/etc/uci-defaults/99-xr30-network-tuning
-          test -s openwrt/package/xr30-network-tuning/files/etc/init.d/xr30-cpufreq
-          test -s openwrt/package/xr30-network-tuning/files/etc/uci-defaults/98-xr30-cpufreq-enable
+          test -s openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-game-latency
           if grep -qE 'flow_offloading|tcp_fastopen' openwrt/package/xr30-network-tuning/files/etc/uci-defaults/99-xr30-network-tuning; then
             echo 'ERROR: tuning package must not touch flow-offload or TFO'; exit 1
           fi
-          grep -q 'scaling_governor' openwrt/package/xr30-network-tuning/files/etc/init.d/xr30-cpufreq
-          # schedutil must be the governor; performance would pin both cores at max.
-          grep -q 'GOVERNOR="schedutil"' openwrt/package/xr30-network-tuning/files/etc/init.d/xr30-cpufreq
+          # sch_fq is not built into this kernel; fq_codel is the default.
+          if grep -q 'net.core.default_qdisc = fq$' openwrt/package/xr30-network-tuning/files/etc/uci-defaults/99-xr30-network-tuning; then
+            echo 'ERROR: default_qdisc=fq is not supported (CONFIG_NET_SCH_FQ not set)'; exit 1
+          fi
+          # Game-latency defaults: CAKE on, HNAT off, BBR pinned in turboacc.
+          grep -q "set sqm.wan.qdisc='cake'" openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-game-latency
+          grep -q "set turboacc.config.fastpath='none'" openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-game-latency
+          grep -q "set turboacc.config.tcpcca='bbr'" openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-game-latency
+          # Docker must stay out of every profile (br_netfilter hurts bridging).
+          if grep -qE '^\s*"(docker|dockerd|luci-app-dockerman|luci-lib-docker)"' scripts/configure.py \
+             && ! grep -q '"docker", "dockerd"' scripts/configure.py; then
+            echo 'ERROR: docker selection state is inconsistent in configure.py'; exit 1
+          fi
           if [ "$PROFILE" = 'full' ]; then
             test -s openwrt/package/luci-app-adguardhome/Makefile
             test -d openwrt/package/luci-app-adguardhome/luasrc

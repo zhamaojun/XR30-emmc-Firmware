@@ -24,17 +24,18 @@ PERFORMANCE = {
     "kmod-tun",
     "smartdns", "luci-app-smartdns",
     "wireguard-tools", "kmod-wireguard", "luci-app-wireguard",
-    "docker", "dockerd", "luci-app-dockerman", "luci-lib-docker",
-    # Spread NIC interrupts across both A53 cores; Docker and OpenClash on a
-    # 2-core SoC otherwise pin most softirq work to CPU0.
-    "irqbalance",
-    # Conservative, reversible sysctl tuning (buffers/backlog/local BBR).
-    # Never enables flow-offload, qdisc changes or TCP Fast Open.
+    # Reversible sysctl tuning + the SQM/game-latency defaults.
+    # Never enables flow-offload, qdisc changes here or TCP Fast Open; the
+    # qdisc choice is made by the uci-defaults script, which is documented
+    # and reversible.
     "xr30-network-tuning",
+    # SQM moves to performance because the tuning package now defaults the
+    # router to CAKE for low-latency gaming, and that default needs the
+    # binaries present in every profile above baseline.
+    "luci-app-sqm", "sqm-scripts", "kmod-sched-cake",
 }
 FULL = {
     "adguardhome", "tailscale", "luci-app-store",
-    "luci-app-sqm", "sqm-scripts", "kmod-sched-cake",
     # LuCI for the AdGuard Home binary above (kenzok8, pinned, Lua/CBI).
     # It must NOT bundle a second adguardhome binary; see custom_prepare.sh.
     "luci-app-adguardhome",
@@ -56,9 +57,20 @@ REMOVE = {
     "luci-app-airplay2", "luci-app-shairplay", "luci-app-autoreboot",
     "luci-app-ramfree", "luci-app-guest-wifi", "luci-app-socat",
     "luci-app-usb-printer", "luci-app-filetransfer",
+    # Docker removed deliberately. It loads br_netfilter, which forces bridged
+    # LAN/WiFi traffic through iptables and both raises latency and conflicts
+    # with the CAKE/HNAT data paths. The owner does not run containers.
+    "docker", "dockerd", "containerd", "luci-app-dockerman",
+    "luci-lib-docker", "tini", "runc",
+    # irqbalance measured ineffective on this board: after a start plus 20s
+    # the per-CPU interrupt counters were unchanged, and the two busy sources
+    # are already split (WiFi on CPU1, ethernet on CPU0).
+    "irqbalance",
 }
-# Profiles deliberately install SQM but NEVER automatically enable it.
-# The router must choose hardware HNAT or full-path CAKE at runtime.
+# Profiles deliberately install SQM, and the tuning package turns it on with
+# CAKE: the owner games over a wired LAN on a ~120/80 Mbit line, where low
+# jitter matters more than raw throughput. HNAT is already off by default
+# because it bypasses the qdisc and would defeat CAKE.
 PROFILE = {
     "baseline": COMMON,
     "performance": COMMON | PERFORMANCE,
