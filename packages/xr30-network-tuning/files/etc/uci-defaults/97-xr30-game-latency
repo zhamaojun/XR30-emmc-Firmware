@@ -42,8 +42,11 @@ uci -q batch <<EOF
 EOF
 
 # HNAT off so the qdisc is actually traversed. TurboACC keeps running for
-# its other toggles; only the fastpath is switched to none.
-uci -q set turboacc.config.fastpath='none'
+# its other toggles; only the fastpath engine is switched off.
+# Valid ListValue options are: disabled, flow_offloading, fast_classifier,
+# shortcut_fe_cm, mediatek_hnat. The off value is 'disabled' (which is also
+# upstream's default) - 'none' is NOT a valid choice.
+uci -q set turboacc.config.fastpath='disabled'
 # TurboACC rewrites the congestion control at boot from its own setting, so
 # BBR has to be set here as well or the sysctl in 99-xr30-network-tuning gets
 # overwritten back to cubic on every restart.

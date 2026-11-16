@@ -120,7 +120,10 @@ class OverlayUnitTests(unittest.TestCase):
         self.assertIn("set sqm.wan.download='110400'", text)
         self.assertIn("set sqm.wan.upload='73600'", text)
         # HNAT bypasses the qdisc, so it has to be off for CAKE to work.
-        self.assertIn("set turboacc.config.fastpath='none'", text)
+        # 'disabled' is the valid TurboACC ListValue; 'none' is not an option.
+        self.assertIn("set turboacc.config.fastpath='disabled'", text)
+        self.assertNotIn("fastpath='none'", text,
+                         "TurboACC has no 'none' option; use 'disabled'")
         # TurboACC rewrites congestion control at boot; BBR must be pinned
         # there too or the sysctl setting is lost on every restart.
         self.assertIn("set turboacc.config.tcpcca='bbr'", text)

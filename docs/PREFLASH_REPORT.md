@@ -55,7 +55,7 @@
 | Tailscale 1.32.3-1 | full | 内置 | 未登录不启动连接 |
 | Docker/Dockerman | **已移除** | — | `br_netfilter` 会让桥接 LAN/WiFi 流量多过一遍 iptables，推高延迟并与 CAKE 数据路径冲突；机主不跑容器。需要时可从 CI 产物 `packages/` 装回 |
 | **SQM/CAKE** | perf/full | **默认启用**（开机 uci-defaults） | `piece_of_cake.qos` + `nat dual-dsthost/dual-srchost`（NAT 后按主机公平），下行 110400 / 上行 73600 kbit（实测 120/80 Mbit 的 92%）。**同时默认关闭 HNAT**（见下） |
-| **HNAT 硬件加速** | 全部 | 内置但**默认关闭**（`fastpath=none`） | HNAT 会绕过 qdisc，开着 CAKE 就完全失效。120 Mbit 线路软件转发开销很小，用低抖动换吞吐是刻意的取舍 |
+| **HNAT 硬件加速** | 全部 | 内置但**默认关闭**（`fastpath=disabled`，TurboACC 的合法关闭值就是 `disabled`，无 `none`） | HNAT 会绕过 qdisc，开着 CAKE 就完全失效。120 Mbit 线路软件转发开销很小，用低抖动换吞吐是刻意的取舍 |
 | 拥塞控制 | perf/full | 默认 **bbr** | 通过 `turboacc.config.tcpcca='bbr'` 固定，否则 TurboACC 每次重启会改回 cubic |
 | iStore 0.2.1-r1 | full | 内置 | 商店二进制不保证适配本 target，安装前三思 |
 | mtwifi-cfg / eQoS-MTK | 全部 | 内置 | 无线校准来自 factory 分区，勿动 |
