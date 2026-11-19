@@ -171,6 +171,26 @@ jobs:
             echo "ERROR: TurboACC fastpath has no 'none' value; use 'disabled'"; exit 1
           fi
           grep -q "set turboacc.config.tcpcca='bbr'" openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-game-latency
+          # luci-app-turboacc-mtk ships uci-defaults/turboacc, which rewrites
+          # /etc/config/turboacc wholesale and picks fastpath=mediatek_hnat.
+          # Letters sort after digits, so it used to wipe HNAT-off/BBR on the
+          # first boot. It bails out on turboacc.global.set=1: that line must
+          # exist and must come before any other turboacc write.
+          GL_SCRIPT=openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-game-latency
+          grep -q "set turboacc.global.set='1'" "$GL_SCRIPT"
+          guard_line=$(grep -n "set turboacc.global.set='1'" "$GL_SCRIPT" | head -1 | cut -d: -f1)
+          first_cfg_line=$(grep -n 'set turboacc\.config\.' "$GL_SCRIPT" | head -1 | cut -d: -f1)
+          if [ -z "$guard_line" ] || [ -z "$first_cfg_line" ] || [ "$guard_line" -ge "$first_cfg_line" ]; then
+            echo 'ERROR: turboacc.global.set=1 must be set before turboacc.config.* writes'; exit 1
+          fi
+          grep -q 'set ucitrack.@turboacc\[-1\].init=turboacc' "$GL_SCRIPT"
+          # PPPoE needs pppoe-wan + overhead 8, else the shaper sits on the
+          # wrong device and CAKE underestimates the wire rate.
+          grep -q 'WAN_DEV="pppoe-wan"' "$GL_SCRIPT"
+          grep -q "set sqm.wan.overhead='\$OVERHEAD'" "$GL_SCRIPT"
+          if grep -q "set sqm.wan.overhead='0'" "$GL_SCRIPT"; then
+            echo 'ERROR: SQM overhead must come from the detected WAN proto'; exit 1
+          fi
           # Docker must stay out of every profile (br_netfilter hurts bridging).
           if grep -qE '^\s*"(docker|dockerd|luci-app-dockerman|luci-lib-docker)"' scripts/configure.py \
              && ! grep -q '"docker", "dockerd"' scripts/configure.py; then

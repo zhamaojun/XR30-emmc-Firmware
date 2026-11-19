@@ -130,7 +130,7 @@
 ```sh
 sysctl net.ipv4.tcp_congestion_control        # 期望 bbr
 uci get turboacc.config.tcpcca                # 期望 bbr
-uci get turboacc.config.fastpath              # 期望 none
+uci get turboacc.config.fastpath              # 期望 disabled（'none' 不是合法值）
 tc qdisc show dev eth1 | grep cake            # 期望存在 cake
 lsmod | grep -c br_netfilter                  # 期望 0（Docker 已移除）
 sysctl vm.swappiness                          # 期望 10

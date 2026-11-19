@@ -1,5 +1,5 @@
 #!/bin/sh
-# Game-latency defaults for the XR30: SQM+CAKE on the WAN, HNAT off.
+# Game-latency defaults for the XR30: SQM+CAKE on the WAN, HNAT off, BBR on.
 #
 # Why: the owner games from a wired client on a ~120/80 Mbit line. Raw
 # throughput is not the constraint; jitter under load is. CAKE keeps the
@@ -12,57 +12,122 @@
 # shape slightly BELOW the real rate or the bottleneck queue stays full and
 # the shaping does nothing. Adjust in LuCI -> Network -> SQM if the line
 # changes; these are starting values, not a permanent contract.
+#
+# ORDERING IS LOAD-BEARING. /etc/uci-defaults is executed in name order and
+# digits sort before letters, so everything in this file runs before any
+# letter-named script. luci-app-turboacc-mtk ships "uci-defaults/turboacc",
+# which REPLACES the whole /etc/config/turboacc with a heredoc and then picks
+# fastpath=mediatek_hnat whenever mtkhnat.ko exists - that silently undid the
+# TurboACC settings below on the first boot after flashing (2026-11-20 field
+# test: fastpath=mediatek_hnat, tcpcca=cubic). Its first line is
+# `[ "$(uci -q get turboacc.global.set)" -eq "1" ] && exit 0`, so claiming
+# that flag first is the supported way to keep our values.
 
-# Only act when SQM is actually installed (baseline profile has no SQM).
-[ -x /etc/init.d/sqm ] || exit 0
-
-# Pick the WAN device: follow the logical wan interface to a real netdev.
-WAN_DEV="$(uci -q get network.wan.device)"
-[ -n "$WAN_DEV" ] || WAN_DEV="eth1"
-
-# One SQM queue on the WAN device. piece_of_cake.qos shapes both directions
-# with cake and no diffserv split; nat dual-* keeps per-host fairness so one
-# busy host cannot starve the game client behind NAT.
-uci -q batch <<EOF
-	delete sqm.wan
-	set sqm.wan=queue
-	set sqm.wan.enabled='1'
-	set sqm.wan.interface='$WAN_DEV'
-	set sqm.wan.download='110400'
-	set sqm.wan.upload='73600'
-	set sqm.wan.qdisc='cake'
-	set sqm.wan.script='piece_of_cake.qos'
-	set sqm.wan.linklayer='ethernet'
-	set sqm.wan.overhead='0'
-	set sqm.wan.iqdisc_opts='nat dual-dsthost'
-	set sqm.wan.eqdisc_opts='nat dual-srchost'
-	set sqm.wan.verbosity='2'
-	set sqm.wan.debug_logging='0'
-	commit sqm
-EOF
-
-# HNAT off so the qdisc is actually traversed. TurboACC keeps running for
-# its other toggles; only the fastpath engine is switched off.
+# --- TurboACC: HNAT off, BBR on -------------------------------------------
+uci -q set turboacc.global.set='1'
 # Valid ListValue options are: disabled, flow_offloading, fast_classifier,
-# shortcut_fe_cm, mediatek_hnat. The off value is 'disabled' (which is also
-# upstream's default) - 'none' is NOT a valid choice.
+# shortcut_fe_cm, mediatek_hnat. The off value is 'disabled' (also upstream's
+# default) - 'none' is NOT a valid choice.
 uci -q set turboacc.config.fastpath='disabled'
-# TurboACC rewrites the congestion control at boot from its own setting, so
-# BBR has to be set here as well or the sysctl in 99-xr30-network-tuning gets
-# overwritten back to cubic on every restart.
+# TurboACC's init writes net.ipv4.tcp_congestion_control from tcpcca at boot,
+# so BBR has to be pinned here as well or the sysctl in 99-xr30-network-tuning
+# gets overwritten back to cubic on every start.
 uci -q set turboacc.config.tcpcca='bbr'
 uci -q commit turboacc
+
+# One caveat comes with the early exit: turboacc's own script also registers
+# this ucitrack entry at the bottom, and we now skip that. Register it here so
+# editing TurboACC in LuCI still restarts the service.
+uci -q batch <<'EOF' >/dev/null
+delete ucitrack.@turboacc[-1]
+add ucitrack turboacc
+set ucitrack.@turboacc[-1].init=turboacc
+commit ucitrack
+EOF
+
+# rc.d symlinks created during this boot are not picked up by this boot, but
+# the next one re-reads /etc/rc.d, so enabling is enough; no service restart
+# here (this runs at S10boot, long before the WAN device exists).
+/etc/init.d/turboacc enable 2>/dev/null
+
+# Same one-boot lag for the hook itself: if mtkhnat.ko is already loaded with
+# its hook up, drop it now instead of waiting for the next reboot. Writing 0
+# here is exactly what turboacc's own start() does for the non-HNAT case.
+[ -e /sys/kernel/debug/hnat/hook_toggle ] && \
+	echo 0 > /sys/kernel/debug/hnat/hook_toggle 2>/dev/null
 
 # BBR lives in a module on this kernel; make it load on every boot.
 mkdir -p /etc/modules.d
 echo tcp_bbr > /etc/modules.d/30-tcp_bbr
 
+# --- SQM + CAKE -----------------------------------------------------------
+# Only act when SQM is actually installed (baseline profile has no SQM).
+[ -x /etc/init.d/sqm ] || exit 0
+
+# Detect the WAN link. This is not cosmetic:
+#  * PPPoE creates its own pppoe-wan netdev. Following network.wan.device
+#    would point at the raw ethernet port, so the shaper would sit on a
+#    device the traffic never leaves through - shaping silently does nothing.
+#  * PPPoE adds 8 bytes to every packet. Telling CAKE overhead=0 makes it
+#    underestimate the real wire rate, which leaves exactly the standing
+#    queue SQM exists to remove.
+WAN_PROTO="$(uci -q get network.wan.proto)"
+case "$WAN_PROTO" in
+	pppoe)
+		WAN_DEV="pppoe-wan"
+		OVERHEAD=8
+		;;
+	*)
+		WAN_DEV="$(uci -q get network.wan.device)"
+		[ -n "$WAN_DEV" ] || WAN_DEV="eth1"
+		OVERHEAD=0
+		;;
+esac
+
+# One SQM queue on the WAN device. piece_of_cake.qos shapes both directions
+# with cake and no diffserv split; nat dual-* keeps per-host fairness so one
+# busy host cannot starve the game client behind NAT.
+uci -q batch <<EOF
+delete sqm.wan
+set sqm.wan=queue
+set sqm.wan.enabled='1'
+set sqm.wan.interface='$WAN_DEV'
+set sqm.wan.download='110400'
+set sqm.wan.upload='73600'
+set sqm.wan.qdisc='cake'
+set sqm.wan.script='piece_of_cake.qos'
+set sqm.wan.linklayer='ethernet'
+set sqm.wan.overhead='$OVERHEAD'
+set sqm.wan.iqdisc_opts='nat dual-dsthost'
+set sqm.wan.eqdisc_opts='nat dual-srchost'
+set sqm.wan.verbosity='2'
+set sqm.wan.debug_logging='0'
+commit sqm
+EOF
+
 /etc/init.d/sqm enable
-/etc/init.d/turboacc restart 2>/dev/null
-/etc/init.d/sqm restart 2>/dev/null
 
-sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1
+# SQM's own ingress shaping needs an ifb device and a redirect rule per
+# interface; if kmod-ifb is missing the download shaper never comes up and
+# only upload is shaped - which is exactly the lopsided bufferbloat grade
+# this firmware is trying to fix. Fail closed instead of shipping that.
+# Check for the module FILE, not for it being loaded: this runs at S10boot,
+# before sqm has had a chance to modprobe anything.
+if [ "$(uci -q get sqm.wan.qdisc)" = 'cake' ] && \
+   [ ! -e "/lib/modules/$(uname -r)/ifb.ko" ]; then
+	logger -t xr30-tuning "ERROR: kmod-ifb missing; ingress (download) shaping cannot work"
+	exit 1
+fi
 
-logger -t xr30-tuning "SQM/CAKE enabled on $WAN_DEV (110400/73600 kbit), HNAT off, BBR on"
+# Fail loudly instead of silently shipping a firmware where HNAT still
+# bypasses CAKE. A non-zero exit keeps this script in /etc/uci-defaults, so it
+# is retried on the next boot; every step above is idempotent.
+if [ "$(uci -q get turboacc.config.fastpath)" != "disabled" ] || \
+   [ "$(uci -q get turboacc.config.tcpcca)" != "bbr" ]; then
+	logger -t xr30-tuning "ERROR: TurboACC settings did not stick (still fastpath=$(uci -q get turboacc.config.fastpath), tcpcca=$(uci -q get turboacc.config.tcpcca))"
+	exit 1
+fi
+
+logger -t xr30-tuning "SQM/CAKE on $WAN_DEV proto=$WAN_PROTO overhead=$OVERHEAD (110400/73600 kbit), HNAT off, BBR on"
 
 exit 0

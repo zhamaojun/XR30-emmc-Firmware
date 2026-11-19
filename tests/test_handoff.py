@@ -130,6 +130,55 @@ class OverlayUnitTests(unittest.TestCase):
         # Baseline has no SQM package; the script must no-op there.
         self.assertIn('/etc/init.d/sqm ] || exit 0', text)
 
+    def test_game_latency_claims_turboacc_guard_before_its_own_defaults(self):
+        """Regression: luci-app-turboacc-mtk ships uci-defaults/turboacc.
+
+        That script REPLACES /etc/config/turboacc wholesale and then selects
+        fastpath=mediatek_hnat when mtkhnat.ko exists. Letters sort after
+        digits, so it ran after "97-" and wiped HNAT-off + BBR on the first
+        boot of the 2026-11-20 build. It exits early on turboacc.global.set=1,
+        so that flag must be claimed first.
+        """
+        text = (ROOT / 'packages/xr30-network-tuning/files/etc/uci-defaults/'
+                        '97-xr30-game-latency').read_text()
+        guard = "set turboacc.global.set='1'"
+        self.assertIn(guard, text)
+        # The guard only helps if it precedes every other turboacc write:
+        # the clobbering script bails out before we would write our values.
+        self.assertLess(text.index(guard),
+                        text.index("set turboacc.config.fastpath='disabled'"),
+                        'global.set must be claimed before fastpath')
+        self.assertLess(text.index(guard),
+                        text.index("set turboacc.config.tcpcca='bbr'"),
+                        'global.set must be claimed before tcpcca')
+        # TurboACC has to be configured even when SQM is absent (baseline), so
+        # the block cannot sit behind the sqm guard.
+        self.assertLess(text.index("set turboacc.config.fastpath='disabled'"),
+                        text.index('/etc/init.d/sqm ] || exit 0'),
+                        'turboacc config must not be gated on SQM')
+        # Taking the early exit skips turboacc's own ucitrack registration.
+        self.assertIn("set ucitrack.@turboacc[-1].init=turboacc", text)
+        # Drop an already-raised HNAT hook now: rc.d links created during this
+        # boot only take effect from the next one.
+        self.assertIn('/sys/kernel/debug/hnat/hook_toggle', text)
+
+    def test_game_latency_detects_pppoe_wan(self):
+        """PPPoE needs a different netdev and a non-zero overhead.
+
+        Following network.wan.device on a PPPoE line points at the raw
+        ethernet port, so the shaper sits on a device the traffic never
+        leaves through; and overhead=0 makes CAKE underestimate the wire
+        rate, leaving the standing queue SQM is supposed to remove.
+        """
+        text = (ROOT / 'packages/xr30-network-tuning/files/etc/uci-defaults/'
+                        '97-xr30-game-latency').read_text()
+        self.assertIn('pppoe)', text)
+        self.assertIn('WAN_DEV="pppoe-wan"', text)
+        self.assertIn('OVERHEAD=8', text)
+        # overhead must be written from the detected value, not hard-coded.
+        self.assertIn("set sqm.wan.overhead='$OVERHEAD'", text)
+        self.assertNotIn("set sqm.wan.overhead='0'", text)
+
     def test_sysctl_script_avoids_unavailable_fq_qdisc(self):
         script = (ROOT / 'packages/xr30-network-tuning/files/etc/uci-defaults/'
                           '99-xr30-network-tuning')
