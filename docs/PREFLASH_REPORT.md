@@ -195,6 +195,17 @@ uci set turboacc.config.fastpath='disabled'; uci commit turboacc; /etc/init.d/tu
 顺序很重要：HNAT 不停掉，它会把包交给硬件直通绕过 qdisc，**下载方向的 CAKE 完全失效**
 ——这正是 2026-11-20 那版 `+435 ms` 的直接原因（上传方向 +23 ms 说明只有一半生效）。
 
+**本版产物**（CI run `44766883186`，headSha `83598a38101a3f689196e8e34ee0a42c0ff57420`）：
+
+| 项 | 值 |
+| --- | --- |
+| 镜像 | `firmware/xr30-fullspeed-sysupgrade.bin`，61,195,043 B |
+| SHA256 | `f4beae1c7af731d4256300ba951ece95dd97994afbb00ab5f0b29b8cc8ea2191` |
+| kernel / root | 3,630,330 / 57,555,968 B（p4 占 10.8%、p5 占 2.7%），inventory PASS |
+| 包数 | 515，kmod 165 个全部 `5.4.284` |
+| 关键包 | `xr30-network-tuning 3.0.0-1`、`sqm-scripts`、`luci-app-sqm`、`kmod-sched-cake`、`kmod-tcp-bbr`、`smartmontools 7.2-1` |
+| 缺席 | docker / dockerd / containerd / luci-app-dockerman / luci-lib-docker / irqbalance / tini / runc |
+
 ## 9. 源码版本升级记录（2026-11-13）
 
 | 项 | 升级前 | 升级后 |
