@@ -24,14 +24,14 @@ PERFORMANCE = {
     "kmod-tun",
     "smartdns", "luci-app-smartdns",
     "wireguard-tools", "kmod-wireguard", "luci-app-wireguard",
-    # Reversible sysctl tuning + the SQM/game-latency defaults.
+    # Reversible sysctl tuning + hardware-offload defaults.
     # Never enables flow-offload, qdisc changes here or TCP Fast Open; the
     # qdisc choice is made by the uci-defaults script, which is documented
     # and reversible.
     "xr30-network-tuning",
-    # SQM moves to performance because the tuning package now defaults the
-    # router to CAKE for low-latency gaming, and that default needs the
-    # binaries present in every profile above baseline.
+    # SQM binaries ride along in performance/full so the shaping option is
+    # available without a rebuild. It is shipped DISABLED: the owner chose
+    # full line speed plus conscious download scheduling over shaping.
     "luci-app-sqm", "sqm-scripts", "kmod-sched-cake",
 }
 FULL = {

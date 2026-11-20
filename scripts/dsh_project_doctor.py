@@ -25,7 +25,7 @@ required = [
     # Reversible latency tuning (SQM/CAKE defaults + sysctl block).
     'packages/xr30-network-tuning/Makefile',
     'packages/xr30-network-tuning/files/etc/uci-defaults/99-xr30-network-tuning',
-    'packages/xr30-network-tuning/files/etc/uci-defaults/97-xr30-game-latency',
+    'packages/xr30-network-tuning/files/etc/uci-defaults/97-xr30-hardware-offload',
 ]
 for name in required:
     if not (root / name).is_file():

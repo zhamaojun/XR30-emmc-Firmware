@@ -6,7 +6,7 @@
 # is: delete the block between the markers and reboot. uci-defaults only runs
 # once, so this will not duplicate on later boots.
 #
-# The qdisc/CAKE side lives in 97-xr30-game-latency, not here.
+# The qdisc/CAKE side lives in 97-xr30-hardware-offload, not here.
 #
 # Deliberately NOT done here, and why:
 #   * flow-offload rules  - must stay mutually exclusive with MTK HNAT

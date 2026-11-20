@@ -153,10 +153,10 @@ jobs:
             echo 'ERROR: luci-app-tailscale-lite must stay Lua-only on 21.02'; exit 1
           fi
           grep -q 'require "luci.jsonc"' openwrt/package/luci-app-tailscale-lite/luasrc/model/cbi/tailscale/status.lua
-          # Reversible latency tuning package must be present and documented.
+          # Reversible network-defaults package must be present and documented.
           test -s openwrt/package/xr30-network-tuning/Makefile
           test -s openwrt/package/xr30-network-tuning/files/etc/uci-defaults/99-xr30-network-tuning
-          test -s openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-game-latency
+          test -s openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-hardware-offload
           if grep -qE 'flow_offloading|tcp_fastopen' openwrt/package/xr30-network-tuning/files/etc/uci-defaults/99-xr30-network-tuning; then
             echo 'ERROR: tuning package must not touch flow-offload or TFO'; exit 1
           fi
@@ -164,19 +164,29 @@ jobs:
           if grep -q 'net.core.default_qdisc = fq$' openwrt/package/xr30-network-tuning/files/etc/uci-defaults/99-xr30-network-tuning; then
             echo 'ERROR: default_qdisc=fq is not supported (CONFIG_NET_SCH_FQ not set)'; exit 1
           fi
-          # Game-latency defaults: CAKE on, HNAT off, BBR pinned in turboacc.
-          grep -q "set sqm.wan.qdisc='cake'" openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-game-latency
-          grep -q "set turboacc.config.fastpath='disabled'" openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-game-latency
-          if grep -q "fastpath='none'" openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-game-latency; then
+          # Owner decision 2026-11-21: full speed over shaping. HNAT stays on
+          # with every sub-option turboacc would have chosen itself, and SQM
+          # ships configured but disabled so LuCI's Enable works first time.
+          grep -q "set sqm.wan.qdisc='cake'" openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-hardware-offload
+          grep -q "set sqm.wan.enabled='0'" openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-hardware-offload
+          if grep -q "set sqm.wan.enabled='1'" openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-hardware-offload; then
+            echo 'ERROR: shaping must not be enabled by default'; exit 1
+          fi
+          grep -q "set turboacc.config.fastpath='mediatek_hnat'" openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-hardware-offload
+          grep -q "set turboacc.config.fastpath_mh_eth_hnat='1'" openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-hardware-offload
+          if grep -q "fastpath='disabled'" openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-hardware-offload; then
+            echo 'ERROR: HNAT must stay on; disabling it costs line speed for nothing'; exit 1
+          fi
+          if grep -q "fastpath='none'" openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-hardware-offload; then
             echo "ERROR: TurboACC fastpath has no 'none' value; use 'disabled'"; exit 1
           fi
-          grep -q "set turboacc.config.tcpcca='bbr'" openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-game-latency
+          grep -q "set turboacc.config.tcpcca='bbr'" openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-hardware-offload
           # luci-app-turboacc-mtk ships uci-defaults/turboacc, which rewrites
           # /etc/config/turboacc wholesale and picks fastpath=mediatek_hnat.
-          # Letters sort after digits, so it used to wipe HNAT-off/BBR on the
+          # Letters sort after digits, so it used to reset tcpcca to cubic on the
           # first boot. It bails out on turboacc.global.set=1: that line must
           # exist and must come before any other turboacc write.
-          GL_SCRIPT=openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-game-latency
+          GL_SCRIPT=openwrt/package/xr30-network-tuning/files/etc/uci-defaults/97-xr30-hardware-offload
           grep -q "set turboacc.global.set='1'" "$GL_SCRIPT"
           guard_line=$(grep -n "set turboacc.global.set='1'" "$GL_SCRIPT" | head -1 | cut -d: -f1)
           first_cfg_line=$(grep -n 'set turboacc\.config\.' "$GL_SCRIPT" | head -1 | cut -d: -f1)

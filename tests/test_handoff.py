@@ -105,73 +105,87 @@ class OverlayUnitTests(unittest.TestCase):
             self.assertIn(f'CONFIG_PACKAGE_{pkg}=y', full, f'{pkg} in full')
             self.assertNotIn(f'CONFIG_PACKAGE_{pkg}=y', baseline, f'{pkg} not in baseline')
 
-    def test_game_latency_defaults_are_cake_with_hant_off(self):
+    def test_defaults_keep_hardware_offload_and_ship_sqm_disabled(self):
+        """Owner decision 2026-11-21: full speed, no shaping by default.
+
+        Shaping below the line rate is the only way to remove download-side
+        bufferbloat; the owner accepted full speed instead and consciously
+        avoids bulk downloads. So HNAT must stay ON (otherwise the board sits
+        on the slow path by accident) and SQM must ship configured but off.
+        """
         script = (ROOT / 'packages/xr30-network-tuning/files/etc/uci-defaults/'
-                          '97-xr30-game-latency')
+                          '97-xr30-hardware-offload')
         self.assertTrue(script.is_file())
         text = script.read_text()
-        # CAKE shapes both directions with per-host fairness behind NAT.
+        # Hardware offload on, with every sub-option turboacc would have set
+        # itself. Without an explicit fastpath the case statement in
+        # /etc/init.d/turboacc matches nothing and the PPE never gets hooked.
+        self.assertIn("set turboacc.config.fastpath='mediatek_hnat'", text)
+        for opt in ('fastpath_mh_eth_hnat', 'fastpath_mh_eth_hnat_v6',
+                    'fastpath_mh_eth_hnat_macvlan', 'fastpath_mh_eth_hnat_bind_rate',
+                    'fastpath_mh_eth_hnat_ppenum'):
+            self.assertIn(f"set turboacc.config.{opt}=", text, opt)
+        self.assertNotIn("fastpath='disabled'", text)
+        self.assertNotIn("fastpath='none'", text)
+        # BBR still matters: offloaded flows skip the local stack, but the
+        # userspace proxy's connections to its remote node do not.
+        self.assertIn("set turboacc.config.tcpcca='bbr'", text)
+        # The SQM profile must survive as a switchable option, not be deleted.
+        self.assertIn("set sqm.wan.enabled='0'", text)
         self.assertIn("set sqm.wan.qdisc='cake'", text)
         self.assertIn("set sqm.wan.script='piece_of_cake.qos'", text)
         self.assertIn('nat dual-dsthost', text)
         self.assertIn('nat dual-srchost', text)
-        # Values must stay below the measured 120/80 Mbit line, otherwise the
-        # bottleneck queue stays full and shaping does nothing.
+        # Pre-set to a fraction of the measured 120/80 line so that ticking
+        # Enable in LuCI works first time.
         self.assertIn("set sqm.wan.download='110400'", text)
         self.assertIn("set sqm.wan.upload='73600'", text)
-        # HNAT bypasses the qdisc, so it has to be off for CAKE to work.
-        # 'disabled' is the valid TurboACC ListValue; 'none' is not an option.
-        self.assertIn("set turboacc.config.fastpath='disabled'", text)
-        self.assertNotIn("fastpath='none'", text,
-                         "TurboACC has no 'none' option; use 'disabled'")
-        # TurboACC rewrites congestion control at boot; BBR must be pinned
-        # there too or the sysctl setting is lost on every restart.
-        self.assertIn("set turboacc.config.tcpcca='bbr'", text)
+        # Never enable shaping implicitly.
+        self.assertNotIn("set sqm.wan.enabled='1'", text)
         # Baseline has no SQM package; the script must no-op there.
         self.assertIn('/etc/init.d/sqm ] || exit 0', text)
 
-    def test_game_latency_claims_turboacc_guard_before_its_own_defaults(self):
+    def test_hardware_offload_claims_turboacc_guard_before_its_own_defaults(self):
         """Regression: luci-app-turboacc-mtk ships uci-defaults/turboacc.
 
         That script REPLACES /etc/config/turboacc wholesale and then selects
         fastpath=mediatek_hnat when mtkhnat.ko exists. Letters sort after
-        digits, so it ran after "97-" and wiped HNAT-off + BBR on the first
-        boot of the 2026-11-20 build. It exits early on turboacc.global.set=1,
-        so that flag must be claimed first.
+        digits, so it ran after "97-" and reset tcpcca back to cubic on the
+        first boot of the 2026-11-20 build. It exits early on
+        turboacc.global.set=1, so that flag must be claimed first.
         """
         text = (ROOT / 'packages/xr30-network-tuning/files/etc/uci-defaults/'
-                        '97-xr30-game-latency').read_text()
+                        '97-xr30-hardware-offload').read_text()
         guard = "set turboacc.global.set='1'"
         self.assertIn(guard, text)
         # The guard only helps if it precedes every other turboacc write:
         # the clobbering script bails out before we would write our values.
         self.assertLess(text.index(guard),
-                        text.index("set turboacc.config.fastpath='disabled'"),
+                        text.index("set turboacc.config.fastpath='mediatek_hnat'"),
                         'global.set must be claimed before fastpath')
         self.assertLess(text.index(guard),
                         text.index("set turboacc.config.tcpcca='bbr'"),
                         'global.set must be claimed before tcpcca')
         # TurboACC has to be configured even when SQM is absent (baseline), so
         # the block cannot sit behind the sqm guard.
-        self.assertLess(text.index("set turboacc.config.fastpath='disabled'"),
+        self.assertLess(text.index("set turboacc.config.fastpath='mediatek_hnat'"),
                         text.index('/etc/init.d/sqm ] || exit 0'),
                         'turboacc config must not be gated on SQM')
         # Taking the early exit skips turboacc's own ucitrack registration.
         self.assertIn("set ucitrack.@turboacc[-1].init=turboacc", text)
-        # Drop an already-raised HNAT hook now: rc.d links created during this
-        # boot only take effect from the next one.
+        # rc.d links written during this boot only apply from the next one.
         self.assertIn('/sys/kernel/debug/hnat/hook_toggle', text)
 
-    def test_game_latency_detects_pppoe_wan(self):
+    def test_hardware_offload_detects_pppoe_wan_for_later_shaping(self):
         """PPPoE needs a different netdev and a non-zero overhead.
 
-        Following network.wan.device on a PPPoE line points at the raw
-        ethernet port, so the shaper sits on a device the traffic never
-        leaves through; and overhead=0 makes CAKE underestimate the wire
-        rate, leaving the standing queue SQM is supposed to remove.
+        SQM ships disabled, but its section must still be correct so that
+        ticking Enable later works: following network.wan.device on a PPPoE
+        line points at the raw ethernet port, and overhead=0 makes CAKE
+        underestimate the wire rate.
         """
         text = (ROOT / 'packages/xr30-network-tuning/files/etc/uci-defaults/'
-                        '97-xr30-game-latency').read_text()
+                        '97-xr30-hardware-offload').read_text()
         self.assertIn('pppoe)', text)
         self.assertIn('WAN_DEV="pppoe-wan"', text)
         self.assertIn('OVERHEAD=8', text)

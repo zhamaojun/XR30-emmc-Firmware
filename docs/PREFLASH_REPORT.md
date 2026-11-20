@@ -54,9 +54,9 @@
 | WireGuard | perf/full | `kmod-wireguard` | 未配置不监听 |
 | Tailscale 1.32.3-1 | full | 内置 | 未登录不启动连接 |
 | Docker/Dockerman | **已移除** | — | `br_netfilter` 会让桥接 LAN/WiFi 流量多过一遍 iptables，推高延迟并与 CAKE 数据路径冲突；机主不跑容器。需要时可从 CI 产物 `packages/` 装回 |
-| **SQM/CAKE** | perf/full | **默认启用**（开机 uci-defaults） | `piece_of_cake.qos` + `nat dual-dsthost/dual-srchost`（NAT 后按主机公平），下行 110400 / 上行 73600 kbit（实测 120/80 Mbit 的 92%）。**同时默认关闭 HNAT**（见下） |
-| **HNAT 硬件加速** | 全部 | 内置但**默认关闭**（`fastpath=disabled`，TurboACC 的合法关闭值就是 `disabled`，无 `none`） | HNAT 会绕过 qdisc，开着 CAKE 就完全失效。120 Mbit 线路软件转发开销很小，用低抖动换吞吐是刻意的取舍 |
-| 拥塞控制 | perf/full | 默认 **bbr** | 通过 `turboacc.config.tcpcca='bbr'` 固定，否则 TurboACC 每次重启会改回 cubic |
+| **SQM/CAKE** | perf/full | **已预配置但默认关闭**（`sqm.wan.enabled='0'`） | `piece_of_cake.qos` + `nat dual-dsthost/dual-srchost`（NAT 后按主机公平），下行 110400 / 上行 73600 kbit（实测 120/80 Mbit 的 92%），PPPoE 自动用 `pppoe-wan` + overhead 8。参数已就绪，LuCI → 网络 → SQM 勾选 Enable 即可生效 |
+| **HNAT 硬件加速** | 全部 | **默认开启**（`fastpath=mediatek_hnat` + 全部子项） | 满速、CPU 占用最低。代价是下载满载时无法压制线路缓冲膨胀——机主 2026-11-21 明确选择满速并自觉错开下载，见下节 |
+| 拥塞控制 | perf/full | 默认 **bbr** | 通过 `turboacc.config.tcpcca='bbr'` 固定，否则 TurboACC 每次重启会改回 cubic。只影响路由器自己发起的 TCP（即代理连节点），转发流量不经过本地 TCP 栈 |
 | iStore 0.2.1-r1 | full | 内置 | 商店二进制不保证适配本 target，安装前三思 |
 | mtwifi-cfg / eQoS-MTK | 全部 | 内置 | 无线校准来自 factory 分区，勿动 |
 
@@ -125,6 +125,11 @@
 **关键取舍**：HNAT 与 CAKE 互斥（HNAT 绕过 qdisc）。在 120 Mbit 线路上 HNAT 的收益很小，
 而游戏需要的是低抖动，因此**默认关闭 HNAT、启用 SQM+CAKE**。
 
+> **2026-11-21 决策反转**：机主实测 Waveform bufferbloat 后决定"满足正常使用即可，尽量在多设备
+> 使用时不下大文件"，要求按**省心稳定**重新优化。因此本版的默认值改为
+> **HNAT 开启（满速）+ SQM 预配置但关闭**。上面"默认关闭 HNAT"的描述属于 2.0.0 版，已作废；
+> 下方的验收与回退命令仅在你主动启用 SQM 时才有意义。详见下一节。
+
 **上机验收命令**：
 
 ```sh
@@ -143,6 +148,52 @@ sysctl vm.swappiness                          # 期望 10
 uci set turboacc.config.fastpath='mediatek_hnat'
 uci commit turboacc && /etc/init.d/turboacc restart
 ```
+
+## 2026-11-21 改为"满速 + 省心稳定"（机主决策）
+
+机主在 Waveform bufferbloat 实测拿到 **Grade F**（Unloaded 17 ms、Download Active **+435 ms**、
+Upload Active +23 ms、速率 44.5/42.0 Mbps）之后，明确选择：
+
+> "我觉得满足正常使用就行了，我尽量多设备使用的时候不下载，你觉得可以吗，按省心稳定优化"
+
+**为什么这个取舍是成立的**：缓冲膨胀只发生在**瓶颈队列**上。下载方向的队列在光猫/运营商一侧，
+路由器无权管理；唯一能接管它的办法是**把自己变成瓶颈**（把速率压到真实带宽之下），
+也就是"限速"。机主选择不要限速、改为自觉错开大流量，这是一个自洽的选择：
+**代价是下载满载时延迟仍会飙升，收益是满速、最低 CPU、最少活动部件。**
+
+**本版默认值**：
+
+| 项 | 值 | 原因 |
+| --- | --- | --- |
+| HNAT | `fastpath=mediatek_hnat` + 全部子项 | 满速。子项必须显式写：`global.set=1` 让 turboacc 自己的脚本提前退出后，没人再填这些值 |
+| SQM | `sqm.wan.enabled='0'` | 预配置好接口/overhead/速率，LuCI 勾一下就能用，不必重新刷机 |
+| 拥塞控制 | `tcpcca='bbr'` | 只影响路由器自己发起的 TCP（代理连节点）；转发流量不经过本地 TCP 栈 |
+| sysctl | 保留 | socket buffer、conntrack、swappiness、MTU probing 全部与限速无关，纯稳定性收益 |
+
+**为什么仍要抢占 `turboacc.global.set='1'`**：TurboACC 自带的 `uci-defaults/turboacc`
+会**整体重写** `/etc/config/turboacc` 并把 `tcpcca` 写回 `cubic`。字母序脚本排在数字之后，
+2026-11-20 那版就是这样被覆盖的。`global.set=1` 是它提供的正规退出开关。
+
+**验收（默认状态下）**：
+
+```sh
+uci get turboacc.config.fastpath        # 期望 mediatek_hnat
+uci get turboacc.config.tcpcca          # 期望 bbr
+sysctl net.ipv4.tcp_congestion_control  # 期望 bbr
+uci get sqm.wan.enabled                 # 期望 0（未限速）
+tc qdisc show dev eth1 | grep -c cake   # 期望 0
+logread | grep xr30-tuning              # 期望看到 "HNAT on (full speed) ... DISABLED"
+```
+
+**想启用限速时**（两个都要做，缺一不可）：
+
+```sh
+uci set sqm.wan.enabled='1'; uci commit sqm; /etc/init.d/sqm restart
+uci set turboacc.config.fastpath='disabled'; uci commit turboacc; /etc/init.d/turboacc restart
+```
+
+顺序很重要：HNAT 不停掉，它会把包交给硬件直通绕过 qdisc，**下载方向的 CAKE 完全失效**
+——这正是 2026-11-20 那版 `+435 ms` 的直接原因（上传方向 +23 ms 说明只有一半生效）。
 
 ## 9. 源码版本升级记录（2026-11-13）
 

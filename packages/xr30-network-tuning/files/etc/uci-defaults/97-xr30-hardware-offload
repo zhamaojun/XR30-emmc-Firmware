@@ -1,0 +1,118 @@
+#!/bin/sh
+# Defaults for the XR30: hardware offload ON, shaping OFF, BBR for the
+# router's own TCP.
+#
+# OWNER DECISION (2026-11-21). An earlier revision shaped the WAN with
+# SQM/CAKE and disabled MTK HNAT to make CAKE effective. That is the only
+# way to fix bufferbloat in the download direction, because the queue that
+# matters sits in the modem/ISP and the only way to take it over is to make
+# the router the bottleneck by shaping below the real line rate. The owner
+# accepted the trade the other way round: keep full line speed and hardware
+# offload, and simply avoid bulk downloads while other devices are in use.
+#
+# So HNAT stays ON and SQM is shipped CONFIGURED BUT DISABLED. Enabling it is
+# one checkbox in LuCI -> Network -> SQM queue; the parameters below are
+# already the right ones for this line, so it works without further tuning.
+#
+# ORDERING IS LOAD-BEARING. /etc/uci-defaults runs in name order and digits
+# sort before letters. luci-app-turboacc-mtk ships "uci-defaults/turboacc",
+# which REPLACES the whole /etc/config/turboacc with a heredoc and then picks
+# fastpath=mediatek_hnat whenever mtkhnat.ko exists. Its first line is
+# `[ "$(uci -q get turboacc.global.set)" -eq "1" ] && exit 0`, so claiming
+# that flag first is the supported way to keep our values (2026-11-20 field
+# test: it had silently reset tcpcca back to cubic).
+
+# --- TurboACC: hardware offload on, BBR pinned ----------------------------
+uci -q set turboacc.global.set='1'
+# Mirror exactly what turboacc's own script would choose for this board, but
+# state it explicitly: with global.set=1 that script exits early, so nothing
+# else is going to fill these in. Without an explicit fastpath the case
+# statement in /etc/init.d/turboacc matches nothing and the PPE never gets
+# hooked, i.e. we would sit on the slow path by accident.
+uci -q set turboacc.config.fastpath='mediatek_hnat'
+uci -q set turboacc.config.fastpath_mh_eth_hnat='1'
+uci -q set turboacc.config.fastpath_mh_eth_hnat_v6='1'
+uci -q set turboacc.config.fastpath_mh_eth_hnat_macvlan='0'
+uci -q set turboacc.config.fastpath_mh_eth_hnat_bind_rate='30'
+uci -q set turboacc.config.fastpath_mh_eth_hnat_ppenum='2'
+# Offloaded IPv4/IPv6 flows never reach the local TCP stack, so this only
+# affects connections the router itself terminates - which is exactly the
+# userspace proxy talking to its remote node. That is why it is worth setting
+# even with hardware offload left on.
+uci -q set turboacc.config.tcpcca='bbr'
+uci -q set turboacc.config.fullcone='0'
+uci -q commit turboacc
+
+# Taking turboacc's early exit also skips the ucitrack registration at the
+# bottom of its own script; recreate it so editing TurboACC in LuCI still
+# restarts the service.
+uci -q batch <<'EOF' >/dev/null
+delete ucitrack.@turboacc[-1]
+add ucitrack turboacc
+set ucitrack.@turboacc[-1].init=turboacc
+commit ucitrack
+EOF
+
+/etc/init.d/turboacc enable 2>/dev/null
+
+# rc.d links written during this boot only apply from the next one, so if the
+# hook happens to be up already, raise it now rather than after a reboot.
+[ -e /sys/kernel/debug/hnat/hook_toggle ] && \
+	echo 1 > /sys/kernel/debug/hnat/hook_toggle 2>/dev/null
+
+# BBR lives in a module on this kernel; load it on every boot. Same path the
+# kmod-tcp-bbr package itself uses, so this is a no-op rewrite, not a second
+# entry.
+mkdir -p /etc/modules.d
+echo tcp_bbr > /etc/modules.d/30-tcp_bbr
+
+# --- SQM: configured, but disabled ----------------------------------------
+# Not shipped enabled (see the owner decision above). The profile still
+# installs sqm-scripts, so the section is written here and left off: ticking
+# "Enable" in LuCI then works first time, with the correct interface,
+# overhead and rates, instead of whatever the defaults happen to be.
+[ -x /etc/init.d/sqm ] || exit 0
+
+# PPPoE needs a different netdev and a non-zero overhead. Following
+# network.wan.device on a PPPoE line points at the raw ethernet port, so the
+# shaper would sit on a device the traffic never leaves through; and PPPoE
+# adds 8 bytes per packet, so overhead=0 makes CAKE underestimate the wire
+# rate and leaves the standing queue it is supposed to remove.
+WAN_PROTO="$(uci -q get network.wan.proto)"
+case "$WAN_PROTO" in
+	pppoe)
+		WAN_DEV="pppoe-wan"
+		OVERHEAD=8
+		;;
+	*)
+		WAN_DEV="$(uci -q get network.wan.device)"
+		[ -n "$WAN_DEV" ] || WAN_DEV="eth1"
+		OVERHEAD=0
+		;;
+esac
+
+uci -q batch <<EOF
+delete sqm.wan
+set sqm.wan=queue
+set sqm.wan.enabled='0'
+set sqm.wan.interface='$WAN_DEV'
+set sqm.wan.download='110400'
+set sqm.wan.upload='73600'
+set sqm.wan.qdisc='cake'
+set sqm.wan.script='piece_of_cake.qos'
+set sqm.wan.linklayer='ethernet'
+set sqm.wan.overhead='$OVERHEAD'
+set sqm.wan.iqdisc_opts='nat dual-dsthost'
+set sqm.wan.eqdisc_opts='nat dual-srchost'
+set sqm.wan.verbosity='2'
+set sqm.wan.debug_logging='0'
+commit sqm
+EOF
+
+# Enabled so the LuCI toggle takes effect immediately; with every queue at
+# enabled=0 the service is a no-op.
+/etc/init.d/sqm enable 2>/dev/null
+
+logger -t xr30-tuning "HNAT on (full speed), BBR pinned, SQM preconfigured on $WAN_DEV (proto=$WAN_PROTO, overhead=$OVERHEAD) but DISABLED"
+
+exit 0
